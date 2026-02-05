@@ -1,9 +1,10 @@
 /**
  * Local state management for standalone frontend
- * Will be replaced with Supabase later
+ * Images are stored in IndexedDB, metadata in localStorage
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { saveImage, getImage, deleteProjectImages } from './image-store';
 
 export interface BBox {
   x: number;
@@ -30,9 +31,20 @@ export interface Candidate {
   reason?: string;
 }
 
+// Page metadata (without image data)
+export interface PageMeta {
+  pageNumber: number;
+  width: number;
+  height: number;
+  // Image keys for IndexedDB lookup
+  imageKey: string;
+  thumbnailKey: string;
+}
+
+// Full page data with images (for runtime use)
 export interface PageData {
   pageNumber: number;
-  imageDataUrl: string; // Base64 data URL
+  imageDataUrl: string;
   width: number;
   height: number;
   thumbnailDataUrl: string;
@@ -43,27 +55,30 @@ export interface Project {
   name: string;
   fileName: string;
   totalPages: number;
-  pages: PageData[];
+  pages: PageMeta[]; // Changed from PageData to PageMeta
   issues: Issue[];
   status: 'uploading' | 'processing' | 'ready' | 'completed';
   createdAt: string;
   updatedAt: string;
 }
 
+// Runtime project with loaded images
+export interface ProjectWithImages extends Omit<Project, 'pages'> {
+  pages: PageData[];
+}
+
 interface AppState {
-  // Projects
+  // Projects (metadata only)
   projects: Project[];
   currentProjectId: string | null;
 
   // Actions
-  addProject: (project: Project) => void;
+  addProject: (project: ProjectWithImages) => Promise<void>;
   updateProject: (id: string, updates: Partial<Project>) => void;
-  deleteProject: (id: string) => void;
+  deleteProject: (id: string) => Promise<void>;
   setCurrentProject: (id: string | null) => void;
-  getCurrentProject: () => Project | null;
-
-  // Page actions
-  addPageToProject: (projectId: string, page: PageData) => void;
+  getProject: (id: string) => Project | null;
+  loadProjectWithImages: (id: string) => Promise<ProjectWithImages | null>;
 
   // Issue actions
   addIssue: (projectId: string, issue: Issue) => void;
@@ -77,10 +92,37 @@ export const useAppStore = create<AppState>()(
       projects: [],
       currentProjectId: null,
 
-      addProject: (project) =>
+      addProject: async (projectWithImages) => {
+        const { pages, ...projectMeta } = projectWithImages;
+
+        // Save images to IndexedDB
+        const pageMetas: PageMeta[] = [];
+        for (const page of pages) {
+          const imageKey = `${projectMeta.id}/page-${page.pageNumber}`;
+          const thumbnailKey = `${projectMeta.id}/thumb-${page.pageNumber}`;
+
+          await saveImage(imageKey, page.imageDataUrl);
+          await saveImage(thumbnailKey, page.thumbnailDataUrl);
+
+          pageMetas.push({
+            pageNumber: page.pageNumber,
+            width: page.width,
+            height: page.height,
+            imageKey,
+            thumbnailKey,
+          });
+        }
+
+        // Save metadata to zustand (localStorage)
+        const project: Project = {
+          ...projectMeta,
+          pages: pageMetas,
+        };
+
         set((state) => ({
           projects: [...state.projects, project],
-        })),
+        }));
+      },
 
       updateProject: (id, updates) =>
         set((state) => ({
@@ -89,27 +131,49 @@ export const useAppStore = create<AppState>()(
           ),
         })),
 
-      deleteProject: (id) =>
+      deleteProject: async (id) => {
+        // Delete images from IndexedDB
+        await deleteProjectImages(id);
+
         set((state) => ({
           projects: state.projects.filter((p) => p.id !== id),
           currentProjectId: state.currentProjectId === id ? null : state.currentProjectId,
-        })),
+        }));
+      },
 
       setCurrentProject: (id) => set({ currentProjectId: id }),
 
-      getCurrentProject: () => {
+      getProject: (id) => {
         const state = get();
-        return state.projects.find((p) => p.id === state.currentProjectId) || null;
+        return state.projects.find((p) => p.id === id) || null;
       },
 
-      addPageToProject: (projectId, page) =>
-        set((state) => ({
-          projects: state.projects.map((p) =>
-            p.id === projectId
-              ? { ...p, pages: [...p.pages, page], updatedAt: new Date().toISOString() }
-              : p
-          ),
-        })),
+      loadProjectWithImages: async (id) => {
+        const project = get().getProject(id);
+        if (!project) return null;
+
+        // Load images from IndexedDB
+        const pagesWithImages: PageData[] = [];
+        for (const pageMeta of project.pages) {
+          const imageDataUrl = await getImage(pageMeta.imageKey);
+          const thumbnailDataUrl = await getImage(pageMeta.thumbnailKey);
+
+          if (imageDataUrl && thumbnailDataUrl) {
+            pagesWithImages.push({
+              pageNumber: pageMeta.pageNumber,
+              width: pageMeta.width,
+              height: pageMeta.height,
+              imageDataUrl,
+              thumbnailDataUrl,
+            });
+          }
+        }
+
+        return {
+          ...project,
+          pages: pagesWithImages,
+        };
+      },
 
       addIssue: (projectId, issue) =>
         set((state) => ({

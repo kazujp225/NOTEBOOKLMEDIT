@@ -22,8 +22,8 @@ export async function processPdf(
   // Dynamic import of PDF.js to avoid SSR issues
   const pdfjsLib = await import('pdfjs-dist');
 
-  // Set worker source for v4.x
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs`;
+  // Set worker source - use unpkg as fallback
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`;
 
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;

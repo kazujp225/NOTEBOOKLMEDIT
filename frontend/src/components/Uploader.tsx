@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, File, X, Loader2, CheckCircle2 } from 'lucide-react';
+import { Upload, File, X, Loader2, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/Button';
 import { useAppStore, generateId } from '@/lib/store';
@@ -54,11 +54,11 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
         setProgress({ current, total });
       });
 
-      // Create project in local store
+      // Create project in local store (images saved to IndexedDB)
       const projectId = generateId();
       const now = new Date().toISOString();
 
-      addProject({
+      await addProject({
         id: projectId,
         name: file.name.replace(/\.pdf$/i, ''),
         fileName: file.name,
@@ -101,66 +101,52 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
     : 0;
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
+    <div className="w-full max-w-xl mx-auto">
       {uploadState === 'idle' && (
         <div
           {...getRootProps()}
           className={cn(
-            'relative border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer',
-            'transition-all duration-300 ease-out',
-            'hover:border-blue-400 hover:bg-blue-50/50',
+            'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors',
             isDragActive
-              ? 'border-blue-500 bg-blue-50 scale-[1.02]'
-              : 'border-gray-300 bg-white'
+              ? 'border-gray-400 bg-gray-100'
+              : 'border-gray-300 bg-white hover:border-gray-400'
           )}
         >
           <input {...getInputProps()} />
 
-          <div className={cn(
-            'w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center',
-            'transition-all duration-300',
-            isDragActive ? 'bg-blue-100 scale-110' : 'bg-gray-100'
-          )}>
-            <Upload
-              className={cn(
-                'w-10 h-10 transition-colors duration-300',
-                isDragActive ? 'text-blue-500' : 'text-gray-400'
-              )}
-            />
+          <div className="w-12 h-12 mx-auto mb-4 bg-gray-100 rounded-lg flex items-center justify-center">
+            <Upload className="w-6 h-6 text-gray-400" />
           </div>
 
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">
+          <p className="text-gray-900 font-medium mb-1">
             {isDragActive ? 'ここにドロップ' : 'PDFファイルをドロップ'}
-          </h3>
-          <p className="text-gray-500 mb-4">
-            または
-            <span className="text-blue-600 font-medium mx-1">
-              クリックして選択
-            </span>
           </p>
-          <p className="text-sm text-gray-400">
-            最大100ページまでのPDFファイルに対応
+          <p className="text-sm text-gray-500">
+            または <span className="text-gray-700">クリックして選択</span>
+          </p>
+          <p className="text-xs text-gray-400 mt-3">
+            最大100ページまで対応
           </p>
         </div>
       )}
 
       {(uploadState === 'selected' || uploadState === 'error') && file && (
-        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center">
-              <File className="w-7 h-7 text-blue-600" />
+        <div className="bg-white rounded-lg border border-gray-200 p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+              <File className="w-5 h-5 text-gray-500" />
             </div>
             <div className="flex-1 min-w-0">
-              <h4 className="font-semibold text-gray-900 truncate">{file.name}</h4>
+              <p className="font-medium text-gray-900 truncate">{file.name}</p>
               <p className="text-sm text-gray-500">
                 {(file.size / 1024 / 1024).toFixed(2)} MB
               </p>
             </div>
             <button
               onClick={handleCancel}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <X className="w-5 h-5 text-gray-400" />
+              <X className="w-4 h-4 text-gray-400" />
             </button>
           </div>
 
@@ -170,7 +156,7 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
             </div>
           )}
 
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <Button variant="secondary" onClick={handleCancel} className="flex-1">
               キャンセル
             </Button>
@@ -182,40 +168,38 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
       )}
 
       {uploadState === 'processing' && (
-        <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm text-center animate-in fade-in duration-300">
-          <div className="w-16 h-16 mx-auto mb-6 animate-spin">
-            <Loader2 className="w-16 h-16 text-blue-500" />
-          </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
+          <Loader2 className="w-8 h-8 mx-auto mb-4 text-gray-400 animate-spin" />
 
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">
-            PDF解析中...
-          </h3>
-          <p className="text-gray-500 mb-6">
+          <p className="text-gray-900 font-medium mb-1">
+            PDF解析中
+          </p>
+          <p className="text-sm text-gray-500 mb-4">
             {progress.total > 0
-              ? `ページ ${progress.current} / ${progress.total} を処理中`
-              : 'PDFを読み込んでいます...'}
+              ? `${progress.current} / ${progress.total} ページ`
+              : '読み込み中...'}
           </p>
 
-          <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+          <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-300"
+              className="h-full bg-gray-900 rounded-full transition-all duration-300"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
-          <p className="text-sm text-gray-400 mt-2">{progressPercent}%</p>
+          <p className="text-xs text-gray-400 mt-2">{progressPercent}%</p>
         </div>
       )}
 
       {uploadState === 'complete' && (
-        <div className="bg-white rounded-2xl border border-green-200 p-8 shadow-sm text-center animate-in fade-in zoom-in-95 duration-300">
-          <div className="w-16 h-16 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center animate-in zoom-in duration-300">
-            <CheckCircle2 className="w-10 h-10 text-green-500" />
+        <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
+          <div className="w-10 h-10 mx-auto mb-3 bg-green-100 rounded-full flex items-center justify-center">
+            <Check className="w-5 h-5 text-green-600" />
           </div>
 
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">
-            処理完了!
-          </h3>
-          <p className="text-gray-500">エディタを開いています...</p>
+          <p className="text-gray-900 font-medium mb-1">
+            処理完了
+          </p>
+          <p className="text-sm text-gray-500">エディタを開いています...</p>
         </div>
       )}
     </div>

@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAppStore } from '@/lib/store';
+import { useAppStore, type PageData } from '@/lib/store';
 
 interface ExportPanelProps {
   projectId: string;
@@ -19,7 +19,7 @@ interface ExportPanelProps {
   onClose: () => void;
 }
 
-type ExportStatus = 'idle' | 'processing' | 'completed' | 'error';
+type ExportStatus = 'idle' | 'loading' | 'processing' | 'completed' | 'error';
 
 interface ExportState {
   pdf: { status: ExportStatus; url?: string; error?: string };
@@ -27,10 +27,12 @@ interface ExportState {
 }
 
 export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
-  const project = useAppStore((state) =>
+  const projectMeta = useAppStore((state) =>
     state.projects.find((p) => p.id === projectId)
   );
+  const loadProjectWithImages = useAppStore((state) => state.loadProjectWithImages);
 
+  const [pages, setPages] = useState<PageData[]>([]);
   const [exports, setExports] = useState<ExportState>({
     pdf: { status: 'idle' },
     pptx: { status: 'idle' },
@@ -44,13 +46,31 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
     }
   }, [isOpen]);
 
+  // Load images when panel opens
+  useEffect(() => {
+    async function loadImages() {
+      if (!isOpen || !projectMeta) return;
+
+      try {
+        const project = await loadProjectWithImages(projectId);
+        if (project) {
+          setPages(project.pages);
+        }
+      } catch (error) {
+        console.error('Failed to load project images:', error);
+      }
+    }
+
+    loadImages();
+  }, [isOpen, projectId, projectMeta, loadProjectWithImages]);
+
   const handleClose = () => {
     setIsVisible(false);
     setTimeout(onClose, 150);
   };
 
   const handleExportPdf = async () => {
-    if (!project) return;
+    if (!projectMeta || pages.length === 0) return;
 
     setExports((prev) => ({
       ...prev,
@@ -66,8 +86,8 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
         unit: 'px',
       });
 
-      for (let i = 0; i < project.pages.length; i++) {
-        const page = project.pages[i];
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i];
 
         if (i > 0) {
           doc.addPage();
@@ -107,7 +127,7 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
   };
 
   const handleExportPptx = async () => {
-    if (!project) return;
+    if (!projectMeta || pages.length === 0) return;
 
     setExports((prev) => ({
       ...prev,
@@ -115,13 +135,26 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
     }));
 
     try {
-      // Dynamic import to avoid SSR issues
-      const PptxGenJS = (await import('pptxgenjs')).default;
+      // Load PptxGenJS from CDN to avoid Node.js dependencies
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let PptxGenJS = (window as any).PptxGenJS;
+
+      if (!PptxGenJS) {
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error('Failed to load PptxGenJS'));
+          document.head.appendChild(script);
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        PptxGenJS = (window as any).PptxGenJS;
+      }
 
       const pptx = new PptxGenJS();
       pptx.layout = 'LAYOUT_16x9';
 
-      for (const page of project.pages) {
+      for (const page of pages) {
         const slide = pptx.addSlide();
 
         // Add page image as background
@@ -156,10 +189,10 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
 
   const handleDownload = (type: 'pdf' | 'pptx') => {
     const url = exports[type].url;
-    if (url && project) {
+    if (url && projectMeta) {
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${project.name}_corrected.${type}`;
+      link.download = `${projectMeta.name}_corrected.${type}`;
       link.click();
     }
   };
@@ -209,6 +242,7 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
             error={exports.pdf.error}
             onExport={handleExportPdf}
             onDownload={() => handleDownload('pdf')}
+            disabled={pages.length === 0}
           />
 
           {/* PPTX Export */}
@@ -220,6 +254,7 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
             error={exports.pptx.error}
             onExport={handleExportPptx}
             onDownload={() => handleDownload('pptx')}
+            disabled={pages.length === 0}
           />
         </div>
 
@@ -245,6 +280,7 @@ interface ExportOptionProps {
   error?: string;
   onExport: () => void;
   onDownload: () => void;
+  disabled?: boolean;
 }
 
 function ExportOption({
@@ -255,6 +291,7 @@ function ExportOption({
   error,
   onExport,
   onDownload,
+  disabled,
 }: ExportOptionProps) {
   return (
     <div
@@ -274,7 +311,7 @@ function ExportOption({
             : 'bg-blue-100'
         )}
       >
-        {status === 'processing' ? (
+        {status === 'processing' || status === 'loading' ? (
           <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
         ) : status === 'completed' ? (
           <CheckCircle2 className="w-6 h-6 text-green-600" />
@@ -303,13 +340,13 @@ function ExportOption({
       ) : (
         <button
           onClick={onExport}
-          disabled={status === 'processing'}
+          disabled={status === 'processing' || status === 'loading' || disabled}
           className={cn(
             'btn-sm',
             status === 'error' ? 'btn-danger' : 'btn-primary'
           )}
         >
-          {status === 'processing' ? (
+          {status === 'processing' || status === 'loading' ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : status === 'error' ? (
             '再試行'

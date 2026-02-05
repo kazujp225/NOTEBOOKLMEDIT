@@ -10,7 +10,8 @@ import { CanvasViewer } from './CanvasViewer';
 import { FixQueuePanel } from './FixQueuePanel';
 import { ExportPanel } from '@/components/panels/ExportPanel';
 import { useToast } from '@/components/ui/Toast';
-import { useAppStore, generateId, type Issue, type BBox } from '@/lib/store';
+import { useAppStore, generateId, type Issue, type BBox, type PageData, type ProjectWithImages } from '@/lib/store';
+import { saveImage, getImage } from '@/lib/image-store';
 
 interface EditorProps {
   projectId: string;
@@ -20,14 +21,17 @@ export function Editor({ projectId }: EditorProps) {
   const router = useRouter();
   const { addToast } = useToast();
 
-  // Get project from store
-  const project = useAppStore((state) =>
+  // Get project metadata from store
+  const projectMeta = useAppStore((state) =>
     state.projects.find((p) => p.id === projectId)
   );
+  const loadProjectWithImages = useAppStore((state) => state.loadProjectWithImages);
   const updateProject = useAppStore((state) => state.updateProject);
   const addIssue = useAppStore((state) => state.addIssue);
   const updateIssue = useAppStore((state) => state.updateIssue);
-  const deleteIssue = useAppStore((state) => state.deleteIssue);
+
+  // Loaded project with images
+  const [project, setProject] = useState<ProjectWithImages | null>(null);
 
   // UI state
   const [isLoading, setIsLoading] = useState(true);
@@ -38,29 +42,52 @@ export function Editor({ projectId }: EditorProps) {
   const [autoFixEnabled, setAutoFixEnabled] = useState(true);
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
-  const [undoStack, setUndoStack] = useState<{ issueId: string; previousImageDataUrl: string }[]>([]);
+  const [undoStack, setUndoStack] = useState<{ issueId: string; pageNumber: number; previousImageDataUrl: string }[]>([]);
   const [jobStatus, setJobStatus] = useState<{ type: 'ocr' | 'generate' | 'export'; message: string } | null>(null);
 
-  // Initialize after mount
+  // Load project images from IndexedDB
   useEffect(() => {
-    if (project) {
-      setIsLoading(false);
-      // Select first unresolved issue
-      const firstUnresolved = project.issues.find(
-        (i) => i.status !== 'corrected' && i.status !== 'skipped'
-      );
-      if (firstUnresolved) {
-        setSelectedIssue(firstUnresolved);
-        setCurrentIssueIndex(project.issues.indexOf(firstUnresolved));
-        setCurrentPageNumber(firstUnresolved.pageNumber);
-      } else if (project.issues.length > 0) {
-        setSelectedIssue(project.issues[0]);
-        setCurrentPageNumber(project.issues[0].pageNumber);
+    async function loadProject() {
+      if (!projectMeta) {
+        setIsLoading(false);
+        return;
       }
-    } else {
-      setIsLoading(false);
+
+      try {
+        const loadedProject = await loadProjectWithImages(projectId);
+        if (loadedProject) {
+          setProject(loadedProject);
+
+          // Select first unresolved issue
+          const firstUnresolved = loadedProject.issues.find(
+            (i) => i.status !== 'corrected' && i.status !== 'skipped'
+          );
+          if (firstUnresolved) {
+            setSelectedIssue(firstUnresolved);
+            setCurrentIssueIndex(loadedProject.issues.indexOf(firstUnresolved));
+            setCurrentPageNumber(firstUnresolved.pageNumber);
+          } else if (loadedProject.issues.length > 0) {
+            setSelectedIssue(loadedProject.issues[0]);
+            setCurrentPageNumber(loadedProject.issues[0].pageNumber);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load project:', err);
+        addToast('error', 'プロジェクトの読み込みに失敗しました');
+      } finally {
+        setIsLoading(false);
+      }
     }
-  }, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    loadProject();
+  }, [projectId, projectMeta, loadProjectWithImages, addToast]);
+
+  // Sync issues from store when they change
+  useEffect(() => {
+    if (project && projectMeta) {
+      setProject((prev) => prev ? { ...prev, issues: projectMeta.issues } : null);
+    }
+  }, [projectMeta?.issues]);
 
   // Memoized values
   const issues = useMemo(() => project?.issues || [], [project?.issues]);
@@ -143,16 +170,24 @@ export function Editor({ projectId }: EditorProps) {
         }
       );
 
-      // Update page image in store
-      const updatedPages = project.pages.map((p) =>
-        p.pageNumber === currentPageNumber
-          ? { ...p, imageDataUrl: newImageDataUrl }
-          : p
-      );
+      // Save new image to IndexedDB
+      const imageKey = `${projectId}/page-${currentPageNumber}`;
+      await saveImage(imageKey, newImageDataUrl);
 
-      updateProject(projectId, { pages: updatedPages });
+      // Update local state
+      setProject((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          pages: prev.pages.map((p) =>
+            p.pageNumber === currentPageNumber
+              ? { ...p, imageDataUrl: newImageDataUrl }
+              : p
+          ),
+        };
+      });
 
-      // Update issue status
+      // Update issue status in store
       updateIssue(projectId, selectedIssue.id, {
         status: 'corrected',
         correctedText: text,
@@ -161,6 +196,7 @@ export function Editor({ projectId }: EditorProps) {
       // Add to undo stack
       setUndoStack((prev) => [...prev, {
         issueId: selectedIssue.id,
+        pageNumber: currentPageNumber,
         previousImageDataUrl,
       }]);
 
@@ -181,7 +217,7 @@ export function Editor({ projectId }: EditorProps) {
     } finally {
       setIsApplying(false);
     }
-  }, [selectedIssue, project, currentPage, currentPageNumber, projectId, issues, currentIssueIndex, updateProject, updateIssue, handleIssueSelect, handleNextIssue, addToast]);
+  }, [selectedIssue, project, currentPage, currentPageNumber, projectId, issues, currentIssueIndex, updateIssue, handleIssueSelect, handleNextIssue, addToast]);
 
   const handleSkip = useCallback(() => {
     if (!selectedIssue) return;
@@ -191,33 +227,37 @@ export function Editor({ projectId }: EditorProps) {
     handleNextIssue();
   }, [selectedIssue, projectId, updateIssue, handleNextIssue, addToast]);
 
-  const handleUndo = useCallback(() => {
+  const handleUndo = useCallback(async () => {
     if (undoStack.length === 0 || !project) return;
 
     const lastUndo = undoStack[undoStack.length - 1];
 
-    // Find the page that was modified
-    const issue = issues.find((i) => i.id === lastUndo.issueId);
-    if (issue) {
-      // Restore the previous image
-      const updatedPages = project.pages.map((p) =>
-        p.pageNumber === issue.pageNumber
-          ? { ...p, imageDataUrl: lastUndo.previousImageDataUrl }
-          : p
-      );
+    // Restore the previous image to IndexedDB
+    const imageKey = `${projectId}/page-${lastUndo.pageNumber}`;
+    await saveImage(imageKey, lastUndo.previousImageDataUrl);
 
-      updateProject(projectId, { pages: updatedPages });
+    // Update local state
+    setProject((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        pages: prev.pages.map((p) =>
+          p.pageNumber === lastUndo.pageNumber
+            ? { ...p, imageDataUrl: lastUndo.previousImageDataUrl }
+            : p
+        ),
+      };
+    });
 
-      // Reset issue status
-      updateIssue(projectId, lastUndo.issueId, {
-        status: 'detected',
-        correctedText: undefined,
-      });
+    // Reset issue status in store
+    updateIssue(projectId, lastUndo.issueId, {
+      status: 'detected',
+      correctedText: undefined,
+    });
 
-      setUndoStack((prev) => prev.slice(0, -1));
-      addToast('success', '元に戻しました');
-    }
-  }, [undoStack, project, issues, projectId, updateProject, updateIssue, addToast]);
+    setUndoStack((prev) => prev.slice(0, -1));
+    addToast('success', '元に戻しました');
+  }, [undoStack, project, projectId, updateIssue, addToast]);
 
   const handleExportPdf = useCallback(() => {
     setShowExportPanel(true);
@@ -239,6 +279,16 @@ export function Editor({ projectId }: EditorProps) {
     };
 
     addIssue(projectId, newIssue);
+
+    // Update local state
+    setProject((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        issues: [...prev.issues, newIssue],
+      };
+    });
+
     setSelectedIssue(newIssue);
     setCurrentIssueIndex(issues.length);
     addToast('success', 'Issue を追加しました');
@@ -314,7 +364,7 @@ export function Editor({ projectId }: EditorProps) {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-100">
+    <div className="h-screen flex flex-col bg-gray-300">
       <TopBar
         projectName={project.name}
         totalPages={project.totalPages}
@@ -417,10 +467,6 @@ export function Editor({ projectId }: EditorProps) {
             candidates: selectedIssue.candidates,
           } : null}
           currentIndex={currentIssueIndex}
-          onSelectIssue={(issue) => {
-            const storeIssue = issues.find((i) => i.id === issue.id);
-            if (storeIssue) handleIssueSelect(storeIssue);
-          }}
           onNext={handleNextIssue}
           onPrevious={handlePreviousIssue}
           onApply={handleApply}
@@ -433,6 +479,10 @@ export function Editor({ projectId }: EditorProps) {
         resolvedCount={resolvedCount}
         totalCount={issues.length}
         jobStatus={jobStatus}
+        zoom={zoom}
+        onZoomIn={() => setZoom((prev) => Math.min(4, prev + 0.25))}
+        onZoomOut={() => setZoom((prev) => Math.max(0.25, prev - 0.25))}
+        onZoomFit={() => setZoom(1)}
       />
 
       <ExportPanel
