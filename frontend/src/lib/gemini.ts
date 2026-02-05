@@ -1,9 +1,15 @@
 /**
  * Gemini API Client for image generation/inpainting
+ * Uses Gemini 3.0 Pro for image generation
  * Users provide their own API keys
  */
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+
+// Gemini 3.0 Pro - 最新の画像生成モデル
+const GEMINI_IMAGE_MODEL = 'gemini-3-pro-image-preview';
+// Gemini 2.0 Flash - テキスト生成用（高速・低コスト）
+const GEMINI_TEXT_MODEL = 'gemini-2.0-flash';
 
 export interface InpaintRequest {
   imageBase64: string;
@@ -55,7 +61,7 @@ export function hasGeminiApiKey(): boolean {
 }
 
 /**
- * Generate correction candidates using Gemini
+ * Generate correction candidates using Gemini 2.0 Flash (text)
  */
 export async function generateCandidates(
   imageBase64: string,
@@ -84,7 +90,7 @@ ${context ? `コンテキスト: ${context}` : ''}
 `;
 
   const response = await fetch(
-    `${GEMINI_API_BASE}/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `${GEMINI_API_BASE}/models/${GEMINI_TEXT_MODEL}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: {
@@ -141,8 +147,41 @@ ${context ? `コンテキスト: ${context}` : ''}
 }
 
 /**
- * Inpaint image region using Gemini 2.0 Flash (image generation)
- * Note: Gemini 2.0 Flash supports image generation with responseModalities
+ * Retry with exponential backoff
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelay: number = 2000
+): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      const errorMessage = lastError.message.toLowerCase();
+
+      // Retry on 503 (service unavailable) or 429 (rate limit)
+      if (errorMessage.includes('503') || errorMessage.includes('429') || errorMessage.includes('overloaded')) {
+        const delay = initialDelay * Math.pow(2, i); // 2s, 4s, 8s
+        console.log(`Retry ${i + 1}/${maxRetries} after ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      // Don't retry on other errors
+      throw lastError;
+    }
+  }
+
+  throw lastError;
+}
+
+/**
+ * Inpaint image region using Gemini 3.0 Pro
+ * This is the latest model for image generation with high quality output
  */
 export async function inpaintImage(request: InpaintRequest): Promise<InpaintResponse> {
   const apiKey = getGeminiApiKey();
@@ -154,7 +193,7 @@ export async function inpaintImage(request: InpaintRequest): Promise<InpaintResp
   const maskDescriptions = request.masks.map((mask, i) => {
     const centerX = Math.round((mask.x + mask.width / 2) * 100);
     const centerY = Math.round((mask.y + mask.height / 2) * 100);
-    return `領域${i + 1}: 中心(${centerX}%, ${centerY}%), サイズ(${Math.round(mask.width * 100)}% x ${Math.round(mask.height * 100)}%)`;
+    return `領域${i + 1}: 中心位置(横${centerX}%, 縦${centerY}%), サイズ(幅${Math.round(mask.width * 100)}%, 高さ${Math.round(mask.height * 100)}%)`;
   }).join('\n');
 
   const prompt = `
@@ -164,15 +203,17 @@ ${maskDescriptions}
 修正内容: ${request.prompt}
 ${request.referenceDesign ? `参考デザイン: ${request.referenceDesign}` : ''}
 
-重要:
-- 指定された領域のみを修正し、他の部分は変更しないでください
-- 周囲のデザインと調和するようにしてください
-- 日本語テキストの場合は読みやすいフォントを使用してください
+重要な指示:
+- 指定された領域のみを修正し、他の部分は絶対に変更しないでください
+- 周囲のデザイン・色調・スタイルと完全に調和させてください
+- 日本語テキストの場合は読みやすく美しいフォントを使用してください
+- 元の画像の解像度と品質を維持してください
+- 背景色や周囲の要素との境界が自然になるようにしてください
 `;
 
-  try {
+  const makeRequest = async (): Promise<InpaintResponse> => {
     const response = await fetch(
-      `${GEMINI_API_BASE}/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+      `${GEMINI_API_BASE}/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: {
@@ -224,6 +265,11 @@ ${request.referenceDesign ? `参考デザイン: ${request.referenceDesign}` : '
       success: false,
       error: 'No image generated in response',
     };
+  };
+
+  try {
+    // Use retry with exponential backoff
+    return await retryWithBackoff(makeRequest, 3, 2000);
   } catch (error) {
     return {
       success: false,

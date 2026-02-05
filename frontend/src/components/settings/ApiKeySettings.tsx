@@ -167,10 +167,12 @@ export function ApiKeySettings({ isOpen, onClose }: ApiKeySettingsProps) {
           </a>
 
           <div className="pt-2 border-t border-gray-100">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">料金目安</h3>
+            <h3 className="text-sm font-medium text-gray-700 mb-2">使用モデル・料金目安</h3>
             <div className="text-sm text-gray-500 space-y-1">
-              <p>• テキスト生成 (Gemini 2.0 Flash): 約$0.075/100万トークン</p>
-              <p>• 画像生成 (Gemini 2.0 Flash): 約$0.04/枚</p>
+              <p>• <strong>画像生成: Gemini 3.0 Pro</strong> (gemini-3-pro-image-preview)</p>
+              <p className="ml-4 text-xs">約$0.134/枚 - 高品質な画像編集</p>
+              <p>• テキスト候補生成: Gemini 2.0 Flash</p>
+              <p className="ml-4 text-xs">約$0.075/100万トークン - 高速・低コスト</p>
               <p className="text-xs text-gray-400 mt-2">
                 ※ 料金は変更される可能性があります。最新情報はGoogleの公式ドキュメントをご確認ください。
               </p>

@@ -51,8 +51,8 @@ http://localhost:3000 を開く
 
 | 機能 | モデル | 料金目安 |
 |------|--------|----------|
+| **AI画像生成** | **Gemini 3.0 Pro** (gemini-3-pro-image-preview) | ~$0.134/枚 |
 | テキスト候補生成 | Gemini 2.0 Flash | ~$0.075/100万トークン |
-| AI画像生成 | Gemini 2.0 Flash | ~$0.04/枚 |
 
 ※ 料金は変更される可能性があります。最新情報は[Google公式ドキュメント](https://ai.google.dev/pricing)をご確認ください。
 
@@ -180,8 +180,8 @@ npm run dev
 - **OCR**: Google Cloud Vision API
 
 ### AI
-- **テキスト生成**: Gemini 2.0 Flash
-- **画像生成**: Gemini 2.0 Flash (with responseModalities)
+- **画像生成**: Gemini 3.0 Pro (gemini-3-pro-image-preview) - 高品質な画像編集
+- **テキスト生成**: Gemini 2.0 Flash - 高速・低コスト
 
 ## よくある質問
 
