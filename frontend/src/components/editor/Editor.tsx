@@ -7,7 +7,7 @@ import { TopBar } from './TopBar';
 import { StatusBar } from './StatusBar';
 import { PagesPanel } from './PagesPanel';
 import { CanvasViewer } from './CanvasViewer';
-import { FixQueuePanel, type AIInpaintOptions } from './FixQueuePanel';
+import { FixQueuePanel, type AIInpaintOptions, type TextStyle } from './FixQueuePanel';
 import { ExportPanel } from '@/components/panels/ExportPanel';
 import { useToast } from '@/components/ui/Toast';
 import { useAppStore, generateId, type Issue, type BBox, type PageData, type ProjectWithImages } from '@/lib/store';
@@ -45,6 +45,7 @@ export function Editor({ projectId }: EditorProps) {
   const [isApplying, setIsApplying] = useState(false);
   const [undoStack, setUndoStack] = useState<{ issueId: string; pageNumber: number; previousImageDataUrl: string }[]>([]);
   const [jobStatus, setJobStatus] = useState<{ type: 'ocr' | 'generate' | 'export'; message: string } | null>(null);
+  const [regionPreviewUrl, setRegionPreviewUrl] = useState<string | null>(null);
 
   // Load project images from IndexedDB
   useEffect(() => {
@@ -109,6 +110,38 @@ export function Editor({ projectId }: EditorProps) {
     [issues]
   );
 
+  // Generate region preview when issue selection changes
+  useEffect(() => {
+    if (!selectedIssue || !currentPage) {
+      setRegionPreviewUrl(null);
+      return;
+    }
+
+    // Create a canvas to crop the region
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const { x, y, width, height } = selectedIssue.bbox;
+      // Add some padding
+      const padding = 20;
+      const cropX = Math.max(0, x - padding);
+      const cropY = Math.max(0, y - padding);
+      const cropW = Math.min(width + padding * 2, img.width - cropX);
+      const cropH = Math.min(height + padding * 2, img.height - cropY);
+
+      canvas.width = cropW;
+      canvas.height = cropH;
+
+      ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+      setRegionPreviewUrl(canvas.toDataURL('image/png'));
+    };
+    img.src = currentPage.imageDataUrl;
+  }, [selectedIssue?.id, selectedIssue?.bbox, currentPage?.imageDataUrl]);
+
   // Handlers
   const handlePageSelect = useCallback((pageNumber: number) => {
     setCurrentPageNumber(pageNumber);
@@ -147,7 +180,8 @@ export function Editor({ projectId }: EditorProps) {
     text: string,
     method: 'text_overlay' | 'ai_inpaint',
     candidateIndex?: number,
-    aiOptions?: AIInpaintOptions
+    aiOptions?: AIInpaintOptions,
+    textStyle?: TextStyle
   ) => {
     if (!selectedIssue || !project || !currentPage) return;
 
@@ -185,7 +219,7 @@ export function Editor({ projectId }: EditorProps) {
         newImageDataUrl = result.imageBase64;
         addToast('success', 'AI修正を適用しました');
       } else {
-        // Use simple text overlay
+        // Use simple text overlay with custom text style
         const { applyTextOverlay } = await import('@/lib/pdf-utils');
 
         newImageDataUrl = await applyTextOverlay(
@@ -193,10 +227,13 @@ export function Editor({ projectId }: EditorProps) {
           selectedIssue.bbox,
           text,
           {
-            fontSize: Math.min(selectedIssue.bbox.height * 0.8, 24),
-            fontFamily: 'Noto Sans JP, sans-serif',
-            color: '#000000',
-            backgroundColor: '#ffffff',
+            fontSize: textStyle?.fontSize || Math.min(selectedIssue.bbox.height * 0.8, 24),
+            fontFamily: textStyle?.fontFamily || 'Noto Sans JP, sans-serif',
+            color: textStyle?.color || '#000000',
+            backgroundColor: textStyle?.backgroundColor || '#ffffff',
+            fontWeight: textStyle?.fontWeight,
+            fontStyle: textStyle?.fontStyle,
+            textAlign: textStyle?.textAlign,
           }
         );
         addToast('success', '修正を適用しました');
@@ -525,6 +562,8 @@ export function Editor({ projectId }: EditorProps) {
           onApply={handleApply}
           onSkip={handleSkip}
           isApplying={isApplying}
+          regionPreviewUrl={regionPreviewUrl || undefined}
+          onDeleteIssue={handleDeleteIssue}
         />
       </div>
 

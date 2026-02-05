@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X, Trash2, Move, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip } from '@/components/ui/Tooltip';
 
@@ -208,21 +208,8 @@ export function CanvasViewer({
     return 'issue-box issue-box-unfixed';
   };
 
-  // Scroll to selected issue
-  useEffect(() => {
-    if (selectedIssueId && containerRef.current) {
-      const selectedIssue = issues.find((i) => i.id === selectedIssueId);
-      if (selectedIssue) {
-        const centerX = (selectedIssue.bbox.x + selectedIssue.bbox.width / 2) * effectiveZoom;
-        const centerY = (selectedIssue.bbox.y + selectedIssue.bbox.height / 2) * effectiveZoom;
-
-        const newPanX = containerSize.width / 2 - centerX - pageWidth * effectiveZoom / 2;
-        const newPanY = containerSize.height / 2 - centerY - pageHeight * effectiveZoom / 2;
-
-        setPanOffset({ x: newPanX, y: newPanY });
-      }
-    }
-  }, [selectedIssueId]);
+  // Note: Auto-scroll to selected issue has been disabled to prevent unwanted camera jumps
+  // Users can manually pan to the issue if needed
 
   // Calculate drawing rect
   const getDrawingRect = () => {
@@ -315,24 +302,67 @@ export function CanvasViewer({
                       }
                     }}
                   >
-                    {/* Delete button - shown when selected */}
-                    {isSelected && onDeleteIssue && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteIssue(issue.id);
-                        }}
-                        className="absolute -top-3 -right-3 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-lg z-30 transition-colors"
-                        aria-label="削除"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                    {/* PowerPoint-style selection handles - 8 points */}
+                    {isSelected && (
+                      <>
+                        <div className="selection-handle selection-handle-nw" />
+                        <div className="selection-handle selection-handle-n" />
+                        <div className="selection-handle selection-handle-ne" />
+                        <div className="selection-handle selection-handle-e" />
+                        <div className="selection-handle selection-handle-se" />
+                        <div className="selection-handle selection-handle-s" />
+                        <div className="selection-handle selection-handle-sw" />
+                        <div className="selection-handle selection-handle-w" />
+                      </>
                     )}
-                    {/* Tooltip on hover */}
-                    <div className="absolute -top-7 left-0 px-2 py-1 text-xs font-medium bg-gray-900 text-white rounded shadow-lg opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20">
-                      {issue.ocr_text?.slice(0, 30) || 'Issue'}
-                      {(issue.ocr_text?.length || 0) > 30 && '...'}
-                    </div>
+
+                    {/* Context toolbar - PowerPoint style floating toolbar */}
+                    {isSelected && (
+                      <div className="context-toolbar">
+                        <Tooltip content="移動">
+                          <button
+                            className="context-toolbar-btn"
+                            aria-label="移動"
+                          >
+                            <Move className="w-4 h-4" />
+                          </button>
+                        </Tooltip>
+                        <Tooltip content="複製">
+                          <button
+                            className="context-toolbar-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Copy functionality - can be extended
+                            }}
+                            aria-label="複製"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+                        </Tooltip>
+                        {onDeleteIssue && (
+                          <Tooltip content="削除 (Delete)">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteIssue(issue.id);
+                              }}
+                              className="context-toolbar-btn context-toolbar-btn-danger"
+                              aria-label="削除"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </Tooltip>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Tooltip on hover - only show when not selected */}
+                    {!isSelected && (
+                      <div className="absolute -top-7 left-0 px-2 py-1 text-xs font-medium bg-gray-900 text-white rounded shadow-lg opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20">
+                        {issue.ocr_text?.slice(0, 30) || 'Issue'}
+                        {(issue.ocr_text?.length || 0) > 30 && '...'}
+                      </div>
+                    )}
                   </div>
                 );
               })}

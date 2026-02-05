@@ -106,6 +106,7 @@ export function extractRoi(
 
 /**
  * Apply text overlay correction to image
+ * Enhanced with full text styling support
  */
 export function applyTextOverlay(
   imageDataUrl: string,
@@ -116,6 +117,10 @@ export function applyTextOverlay(
     fontFamily?: string;
     color?: string;
     backgroundColor?: string;
+    fontWeight?: 'normal' | 'bold';
+    fontStyle?: 'normal' | 'italic';
+    textAlign?: 'left' | 'center' | 'right';
+    textDecoration?: 'none' | 'underline';
   } = {}
 ): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -135,19 +140,48 @@ export function applyTextOverlay(
       ctx.fillStyle = bgColor;
       ctx.fillRect(bbox.x, bbox.y, bbox.width, bbox.height);
 
-      // Draw text
+      // Build font string with weight and style
       const fontSize = options.fontSize || Math.min(bbox.height * 0.8, 24);
       const fontFamily = options.fontFamily || 'Noto Sans JP, sans-serif';
-      ctx.font = `${fontSize}px ${fontFamily}`;
+      const fontWeight = options.fontWeight || 'normal';
+      const fontStyle = options.fontStyle || 'normal';
+
+      ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
       ctx.fillStyle = options.color || '#000000';
       ctx.textBaseline = 'middle';
 
-      // Center text in bbox
+      // Calculate text position based on alignment
       const textMetrics = ctx.measureText(text);
-      const textX = bbox.x + (bbox.width - textMetrics.width) / 2;
+      let textX: number;
+      const textAlign = options.textAlign || 'center';
+
+      switch (textAlign) {
+        case 'left':
+          textX = bbox.x + 4; // Small padding
+          break;
+        case 'right':
+          textX = bbox.x + bbox.width - textMetrics.width - 4;
+          break;
+        case 'center':
+        default:
+          textX = bbox.x + (bbox.width - textMetrics.width) / 2;
+          break;
+      }
+
       const textY = bbox.y + bbox.height / 2;
 
       ctx.fillText(text, textX, textY);
+
+      // Apply underline if specified
+      if (options.textDecoration === 'underline') {
+        const underlineY = textY + fontSize * 0.15;
+        ctx.strokeStyle = options.color || '#000000';
+        ctx.lineWidth = Math.max(1, fontSize / 16);
+        ctx.beginPath();
+        ctx.moveTo(textX, underlineY);
+        ctx.lineTo(textX + textMetrics.width, underlineY);
+        ctx.stroke();
+      }
 
       resolve(canvas.toDataURL('image/png'));
     };
