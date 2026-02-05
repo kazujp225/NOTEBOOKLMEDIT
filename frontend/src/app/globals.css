@@ -170,19 +170,19 @@ body {
     @apply p-4;
   }
 
-  /* Issue Box States */
+  /* Issue Box States - PowerPoint Style */
   .issue-box {
-    @apply absolute border-2 cursor-pointer transition-all duration-150 rounded;
+    @apply absolute border-2 cursor-pointer transition-all duration-150;
   }
 
   .issue-box-unfixed {
-    @apply border-amber-400 bg-amber-400/10 border-dashed;
-    @apply hover:bg-amber-400/20;
+    @apply border-amber-400 bg-amber-400/5 border-dashed;
+    @apply hover:bg-amber-400/15;
   }
 
   .issue-box-active {
-    @apply border-blue-500 bg-blue-500/15 border-solid shadow-lg;
-    @apply ring-4 ring-blue-500/20;
+    @apply border-blue-500 bg-blue-500/10 border-solid;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
   }
 
   .issue-box-fixed {
@@ -191,6 +191,57 @@ body {
 
   .issue-box-review {
     @apply border-red-400 bg-red-400/10 border-dashed;
+  }
+
+  /* Selection Handles - PowerPoint Style */
+  .selection-handle {
+    @apply absolute w-2 h-2 bg-white border-2 border-blue-500 rounded-sm z-20;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  }
+
+  .selection-handle-nw { @apply -top-1 -left-1 cursor-nwse-resize; }
+  .selection-handle-n { @apply -top-1 left-1/2 -translate-x-1/2 cursor-ns-resize; }
+  .selection-handle-ne { @apply -top-1 -right-1 cursor-nesw-resize; }
+  .selection-handle-e { @apply top-1/2 -right-1 -translate-y-1/2 cursor-ew-resize; }
+  .selection-handle-se { @apply -bottom-1 -right-1 cursor-nwse-resize; }
+  .selection-handle-s { @apply -bottom-1 left-1/2 -translate-x-1/2 cursor-ns-resize; }
+  .selection-handle-sw { @apply -bottom-1 -left-1 cursor-nesw-resize; }
+  .selection-handle-w { @apply top-1/2 -left-1 -translate-y-1/2 cursor-ew-resize; }
+
+  .selection-handle:hover {
+    @apply bg-blue-500 border-blue-600;
+    transform: scale(1.2);
+  }
+
+  /* Context Toolbar - PowerPoint Style Floating Mini Toolbar */
+  .context-toolbar {
+    @apply absolute -top-12 left-1/2 -translate-x-1/2;
+    @apply flex items-center gap-0.5 px-1.5 py-1;
+    @apply bg-white rounded-lg border border-gray-200;
+    @apply animate-scale-in z-30;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .context-toolbar::after {
+    content: '';
+    @apply absolute -bottom-1.5 left-1/2 -translate-x-1/2;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid white;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.1));
+  }
+
+  .context-toolbar-btn {
+    @apply p-1.5 rounded-md transition-all duration-150;
+    @apply text-gray-500 hover:text-gray-900 hover:bg-gray-100;
+  }
+
+  .context-toolbar-btn:active {
+    @apply scale-95;
+  }
+
+  .context-toolbar-btn-danger {
+    @apply text-red-500 hover:text-white hover:bg-red-500;
   }
 
   /* Thumbnail */
