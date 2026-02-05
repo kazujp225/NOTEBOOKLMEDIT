@@ -1,0 +1,368 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========================================
+   Design Tokens
+   ======================================== */
+:root {
+  /* Colors - Light Mode */
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f9fafb;
+  --color-bg-tertiary: #f3f4f6;
+
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-tertiary: #9ca3af;
+
+  --color-border: #e5e7eb;
+  --color-border-light: #f3f4f6;
+
+  /* Semantic Colors */
+  --color-success: #10b981;
+  --color-success-light: #d1fae5;
+  --color-warning: #f59e0b;
+  --color-warning-light: #fef3c7;
+  --color-error: #ef4444;
+  --color-error-light: #fee2e2;
+  --color-primary: #3b82f6;
+  --color-primary-light: #dbeafe;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Border Radius */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+
+  /* Layout */
+  --topbar-height: 56px;
+  --statusbar-height: 36px;
+  --sidebar-width: 180px;
+  --panel-width: 360px;
+}
+
+/* ========================================
+   Base Styles
+   ======================================== */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans JP', sans-serif;
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ========================================
+   Component Classes
+   ======================================== */
+@layer components {
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-medium transition-all duration-150;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn px-4 py-2 rounded-lg text-white;
+    @apply bg-blue-500 hover:bg-blue-600 active:bg-blue-700;
+    @apply focus-visible:ring-blue-500;
+    @apply shadow-sm hover:shadow;
+  }
+
+  .btn-secondary {
+    @apply btn px-4 py-2 rounded-lg;
+    @apply bg-white text-gray-700 border border-gray-200;
+    @apply hover:bg-gray-50 hover:border-gray-300 active:bg-gray-100;
+    @apply focus-visible:ring-gray-400;
+  }
+
+  .btn-ghost {
+    @apply btn px-3 py-2 rounded-lg;
+    @apply text-gray-600 hover:text-gray-900 hover:bg-gray-100;
+    @apply focus-visible:ring-gray-400;
+  }
+
+  .btn-danger {
+    @apply btn px-4 py-2 rounded-lg text-white;
+    @apply bg-red-500 hover:bg-red-600 active:bg-red-700;
+    @apply focus-visible:ring-red-500;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-sm;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-lg;
+  }
+
+  /* Cards */
+  .card {
+    @apply bg-white rounded-xl border border-gray-100;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .card-elevated {
+    @apply card;
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Input Fields */
+  .input-field {
+    @apply w-full px-3 py-2 rounded-lg border border-gray-200;
+    @apply bg-white text-gray-900 placeholder-gray-400;
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+    @apply transition-shadow duration-150;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium;
+  }
+
+  .badge-default {
+    @apply badge bg-gray-100 text-gray-700;
+  }
+
+  .badge-primary {
+    @apply badge bg-blue-100 text-blue-700;
+  }
+
+  .badge-success {
+    @apply badge bg-green-100 text-green-700;
+  }
+
+  .badge-warning {
+    @apply badge bg-amber-100 text-amber-700;
+  }
+
+  .badge-error {
+    @apply badge bg-red-100 text-red-700;
+  }
+
+  /* Panels */
+  .panel {
+    @apply bg-white border-gray-200;
+  }
+
+  .panel-header {
+    @apply px-4 py-3 border-b border-gray-100 flex items-center justify-between;
+  }
+
+  .panel-body {
+    @apply p-4;
+  }
+
+  /* Issue Box States */
+  .issue-box {
+    @apply absolute border-2 cursor-pointer transition-all duration-150 rounded;
+  }
+
+  .issue-box-unfixed {
+    @apply border-amber-400 bg-amber-400/10 border-dashed;
+    @apply hover:bg-amber-400/20;
+  }
+
+  .issue-box-active {
+    @apply border-blue-500 bg-blue-500/15 border-solid shadow-lg;
+    @apply ring-4 ring-blue-500/20;
+  }
+
+  .issue-box-fixed {
+    @apply border-green-500 bg-green-500/10 border-solid;
+  }
+
+  .issue-box-review {
+    @apply border-red-400 bg-red-400/10 border-dashed;
+  }
+
+  /* Thumbnail */
+  .thumbnail {
+    @apply relative rounded-lg overflow-hidden cursor-pointer transition-all duration-150;
+    @apply border-2 border-transparent;
+    @apply hover:border-gray-300;
+  }
+
+  .thumbnail-active {
+    @apply border-blue-500 shadow-md;
+  }
+
+  .thumbnail-has-issues {
+    @apply border-amber-400;
+  }
+
+  .thumbnail-completed {
+    @apply border-green-400;
+  }
+
+  /* Progress Bar */
+  .progress-bar {
+    @apply w-full h-1.5 bg-gray-200 rounded-full overflow-hidden;
+  }
+
+  .progress-bar-fill {
+    @apply h-full bg-blue-500 rounded-full transition-all duration-300;
+  }
+
+  .progress-bar-success {
+    @apply bg-green-500;
+  }
+
+  /* Scrollbar */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #d1d5db;
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: #9ca3af;
+  }
+}
+
+/* ========================================
+   Utility Classes
+   ======================================== */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Animation Utilities */
+  .animate-fade-in {
+    animation: fadeIn 200ms ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 200ms ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 150ms ease-out;
+  }
+}
+
+/* ========================================
+   Keyframes
+   ======================================== */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+.skeleton {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(to right, #f3f4f6 8%, #e5e7eb 18%, #f3f4f6 33%);
+  background-size: 1000px 100%;
+}
+
+/* ========================================
+   Toast Container
+   ======================================== */
+.toast-container {
+  @apply fixed bottom-4 right-4 z-50 flex flex-col gap-2;
+}
+
+.toast {
+  @apply flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg;
+  @apply bg-white border border-gray-200;
+  @apply animate-slide-up;
+}
+
+.toast-success {
+  @apply border-l-4 border-l-green-500;
+}
+
+.toast-error {
+  @apply border-l-4 border-l-red-500;
+}
+
+.toast-warning {
+  @apply border-l-4 border-l-amber-500;
+}
+
+/* ========================================
+   Keyboard Focus Styles
+   ======================================== */
+.focus-ring {
+  @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2;
+}
+
+/* ========================================
+   Tooltip
+   ======================================== */
+.tooltip {
+  @apply absolute z-50 px-2 py-1 text-xs font-medium;
+  @apply bg-gray-900 text-white rounded shadow-lg;
+  @apply pointer-events-none;
+  @apply animate-fade-in;
+}
+
+.tooltip::after {
+  content: '';
+  @apply absolute w-0 h-0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+}
+
+.tooltip-bottom::after {
+  @apply top-0 left-1/2 -translate-x-1/2 -translate-y-full;
+  border-bottom: 4px solid #111827;
+}

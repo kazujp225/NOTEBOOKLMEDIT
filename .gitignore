@@ -1,0 +1,76 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.eggs/
+*.egg-info/
+*.egg
+
+# Build outputs
+.next/
+out/
+build/
+dist/
+*.pyo
+*.pyd
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Storage (local uploads)
+storage/
+uploads/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Service account key
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Docker
+.docker/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Python virtual environment
+.venv/
+venv/
+env/
