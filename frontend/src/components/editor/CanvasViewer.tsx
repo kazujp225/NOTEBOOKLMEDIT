@@ -190,7 +190,7 @@ export function CanvasViewer({
   };
 
   // Get issue box class based on status
-  const getIssueBoxClass = (issue: Issue) => {
+  const getIssueBoxClass = (issue: IssueForCanvas) => {
     const isSelected = issue.id === selectedIssueId;
     if (isSelected) return 'issue-box issue-box-active';
     if (issue.status === 'corrected') return 'issue-box issue-box-fixed';

@@ -64,18 +64,18 @@ export default function HomePage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center">
-              <span className="text-sm font-bold text-white">N</span>
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gray-900 rounded-xl flex items-center justify-center">
+              <span className="text-lg font-bold text-white">N</span>
             </div>
-            <span className="text-sm font-medium text-gray-900">NotebookLM 修正ツール</span>
+            <span className="text-base font-semibold text-gray-900">NotebookLM 修正ツール</span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500">{user.email}</span>
+          <div className="flex items-center gap-6">
+            <span className="text-sm text-gray-600">{user.email}</span>
             <button
               onClick={() => signOut()}
-              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <LogOut className="w-4 h-4" />
               ログアウト
@@ -85,67 +85,67 @@ export default function HomePage() {
       </header>
 
       {/* Main content */}
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <main className="max-w-5xl mx-auto px-6 py-12">
         {/* Title */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-bold text-gray-900 mb-3">
             PDF文字修正
           </h1>
-          <p className="text-gray-600">
+          <p className="text-lg text-gray-600">
             PDFをアップロードして、文字化けやぼやけた文字を修正できます。
           </p>
         </div>
 
         {/* Uploader */}
-        <div className="mb-12">
+        <div className="mb-16">
           <Uploader onUploadComplete={handleUploadComplete} />
         </div>
 
         {/* Recent projects */}
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-gray-400" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center gap-3">
+            <Clock className="w-5 h-5 text-gray-400" />
             最近のプロジェクト
           </h2>
 
           {isLoadingProjects ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {[1, 2, 3].map((i) => (
                 <div
                   key={i}
-                  className="h-28 rounded-lg bg-gray-200 animate-pulse"
+                  className="h-32 rounded-xl bg-gray-200 animate-pulse"
                 />
               ))}
             </div>
           ) : projects.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-lg p-6 text-center text-gray-500">
+            <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-gray-500">
               まだプロジェクトがありません。PDFをアップロードして始めましょう。
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {projects.slice(0, 6).map((project) => (
                 <div
                   key={project.id}
-                  className="bg-white border border-gray-200 rounded-lg p-4 cursor-pointer hover:border-gray-300 transition-colors group"
+                  className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:border-gray-300 hover:shadow-md transition-all group"
                   onClick={() => router.push(`/projects/${project.id}`)}
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="w-9 h-9 bg-gray-100 rounded-lg flex items-center justify-center">
-                      <FileText className="w-4 h-4 text-gray-600" />
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
+                      <FileText className="w-6 h-6 text-blue-600" />
                     </div>
                     <button
                       onClick={(e) => handleDeleteProject(project.id, e)}
-                      className="p-1.5 hover:bg-gray-100 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="p-2 hover:bg-gray-100 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
+                      <Trash2 className="w-5 h-5 text-gray-400 hover:text-red-500" />
                     </button>
                   </div>
 
-                  <h3 className="font-medium text-gray-900 truncate mb-1">
+                  <h3 className="font-semibold text-gray-900 truncate mb-2 text-base">
                     {project.name}
                   </h3>
 
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <div className="flex items-center gap-3 text-sm text-gray-500">
                     <span>{project.pages.length}ページ</span>
                     <span>•</span>
                     <Badge
@@ -159,17 +159,13 @@ export default function HomePage() {
                       }
                       size="sm"
                     >
-                      {project.status}
+                      {project.status === 'ready' ? '編集可能' : project.status}
                     </Badge>
                   </div>
 
-                  <p className="text-xs text-gray-400 mt-2">
+                  <p className="text-sm text-gray-400 mt-3">
                     {formatDate(project.createdAt)}
                   </p>
-
-                  <div className="mt-2 flex justify-end">
-                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors" />
-                  </div>
                 </div>
               ))}
             </div>

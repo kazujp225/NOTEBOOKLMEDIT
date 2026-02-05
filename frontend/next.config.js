@@ -22,7 +22,24 @@ const nextConfig = {
         path: false,
         stream: false,
         crypto: false,
+        os: false,
+        http: false,
+        https: false,
+        zlib: false,
+        net: false,
+        tls: false,
+        child_process: false,
       };
+
+      // Handle node: protocol scheme
+      config.module = config.module || {};
+      config.module.rules = config.module.rules || [];
+      config.module.rules.push({
+        test: /\.js$/,
+        resolve: {
+          fullySpecified: false,
+        },
+      });
     }
 
     return config;

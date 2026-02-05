@@ -8,6 +8,8 @@ import {
   SkipForward,
   Loader2,
   Check,
+  Sparkles,
+  Type,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -38,9 +40,11 @@ interface FixQueuePanelProps {
   onSelectIssue?: (issue: IssueForFixQueue) => void;
   onNext: () => void;
   onPrevious: () => void;
-  onApply: (text: string, method: 'text_overlay' | 'nano_banana', candidateIndex?: number) => Promise<void>;
+  onApply: (text: string, method: 'text_overlay' | 'ai_inpaint', candidateIndex?: number) => Promise<void>;
   onSkip: () => void;
   isApplying: boolean;
+  pageWidth?: number;
+  pageHeight?: number;
 }
 
 export function FixQueuePanel({
@@ -57,6 +61,7 @@ export function FixQueuePanel({
   const [selectedCandidateIndex, setSelectedCandidateIndex] = useState<number | null>(null);
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customText, setCustomText] = useState('');
+  const [correctionMethod, setCorrectionMethod] = useState<'text_overlay' | 'ai_inpaint'>('text_overlay');
 
   // Progress calculations
   const resolvedCount = issues.filter(
@@ -94,7 +99,7 @@ export function FixQueuePanel({
 
     if (!text.trim()) return;
 
-    await onApply(text, 'text_overlay', candidateIdx);
+    await onApply(text, correctionMethod, candidateIdx);
     setCustomText('');
     setShowCustomInput(false);
     setSelectedCandidateIndex(null);
@@ -103,17 +108,17 @@ export function FixQueuePanel({
   // Empty state
   if (!currentIssue) {
     return (
-      <aside className="w-[280px] bg-gray-100 border-l border-gray-300 flex flex-col flex-shrink-0">
-        <div className="flex-1 flex flex-col items-center justify-center p-4 text-center">
-          <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mb-3">
-            <Check className="w-5 h-5 text-green-600" />
+      <aside className="w-[320px] bg-white border-l border-gray-200 flex flex-col flex-shrink-0">
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4">
+            <Check className="w-6 h-6 text-green-600" />
           </div>
-          <p className="text-sm font-medium text-gray-900 mb-1">
+          <p className="text-base font-medium text-gray-900 mb-2">
             {totalCount === 0 ? 'Issue なし' : '完了'}
           </p>
-          <p className="text-xs text-gray-500">
+          <p className="text-sm text-gray-500">
             {totalCount === 0
-              ? 'ドラッグで範囲を選択'
+              ? 'ドラッグで範囲を選択してください'
               : '書き出しできます'}
           </p>
         </div>
@@ -124,84 +129,125 @@ export function FixQueuePanel({
   const selectedCandidate = selectedCandidateIndex !== null ? candidates[selectedCandidateIndex] : null;
 
   return (
-    <aside className="w-[280px] bg-gray-100 border-l border-gray-300 flex flex-col flex-shrink-0">
+    <aside className="w-[320px] bg-white border-l border-gray-200 flex flex-col flex-shrink-0">
       {/* Header */}
-      <div className="p-3 border-b border-gray-300 bg-gray-200">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-gray-700">Issue</span>
-          <span className="text-xs text-gray-500">
-            {resolvedCount}/{totalCount}
+      <div className="p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-semibold text-gray-900">修正パネル</span>
+          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+            {resolvedCount}/{totalCount} 完了
           </span>
         </div>
       </div>
 
       {/* Navigation */}
-      <div className="px-3 py-2 flex items-center justify-between border-b border-gray-200">
+      <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
         <button
           onClick={onPrevious}
           disabled={currentIndex === 0}
-          className="p-1 hover:bg-gray-200 rounded transition-colors disabled:opacity-30"
+          className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-30"
         >
-          <ChevronLeft className="w-4 h-4 text-gray-600" />
+          <ChevronLeft className="w-5 h-5 text-gray-600" />
         </button>
 
-        <span className="text-xs text-gray-600">
-          {currentIndex + 1} / {totalCount}
+        <span className="text-sm font-medium text-gray-700">
+          Issue {currentIndex + 1} / {totalCount}
         </span>
 
         <button
           onClick={onNext}
           disabled={currentIndex === totalCount - 1}
-          className="p-1 hover:bg-gray-200 rounded transition-colors disabled:opacity-30"
+          className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-30"
         >
-          <ChevronRight className="w-4 h-4 text-gray-600" />
+          <ChevronRight className="w-5 h-5 text-gray-600" />
         </button>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* OCR Text */}
-        <div className="p-2 bg-white rounded border border-gray-200">
-          <p className="text-[10px] text-gray-400 mb-1">OCR結果</p>
-          <p className="text-sm text-gray-800 font-mono break-all">
-            {currentIssue.ocr_text || '(なし)'}
+        <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <p className="text-xs text-gray-500 mb-2">OCR結果</p>
+          <p className="text-sm text-gray-900 font-mono break-all">
+            {currentIssue.ocr_text || '(テキストなし)'}
+          </p>
+        </div>
+
+        {/* Correction Method Toggle */}
+        <div>
+          <p className="text-xs text-gray-500 mb-2">修正方法</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setCorrectionMethod('text_overlay')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors',
+                correctionMethod === 'text_overlay'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+              )}
+            >
+              <Type className="w-4 h-4" />
+              テキスト合成
+            </button>
+            <button
+              onClick={() => setCorrectionMethod('ai_inpaint')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors',
+                correctionMethod === 'ai_inpaint'
+                  ? 'border-purple-500 bg-purple-50 text-purple-700'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+              )}
+            >
+              <Sparkles className="w-4 h-4" />
+              AI修正
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">
+            {correctionMethod === 'text_overlay'
+              ? 'シンプルなテキスト置換（無料）'
+              : 'Gemini AIで画像を再生成（10クレジット）'}
           </p>
         </div>
 
         {/* Candidates */}
         {candidates.length > 0 && (
-          <div className="space-y-1">
-            <p className="text-[10px] text-gray-500">修正候補</p>
-            {candidates.map((candidate, index) => (
-              <button
-                key={index}
-                onClick={() => {
-                  setSelectedCandidateIndex(index);
-                  setShowCustomInput(false);
-                }}
-                className={cn(
-                  'w-full text-left p-2 rounded border transition-colors text-sm',
-                  selectedCandidateIndex === index && !showCustomInput
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 bg-white hover:border-gray-300'
-                )}
-              >
-                {candidate.text}
-              </button>
-            ))}
+          <div>
+            <p className="text-xs text-gray-500 mb-2">修正候補</p>
+            <div className="space-y-2">
+              {candidates.map((candidate, index) => (
+                <button
+                  key={index}
+                  onClick={() => {
+                    setSelectedCandidateIndex(index);
+                    setShowCustomInput(false);
+                  }}
+                  className={cn(
+                    'w-full text-left p-3 rounded-lg border transition-all',
+                    selectedCandidateIndex === index && !showCustomInput
+                      ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                      : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                  )}
+                >
+                  <p className="text-sm font-medium text-gray-900">{candidate.text}</p>
+                  {candidate.reason && (
+                    <p className="text-xs text-gray-500 mt-1">{candidate.reason}</p>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
         {/* Custom input */}
         {showCustomInput && (
           <div>
-            <p className="text-[10px] text-gray-500 mb-1">手動入力</p>
+            <p className="text-xs text-gray-500 mb-2">手動入力</p>
             <input
               type="text"
               value={customText}
               onChange={(e) => setCustomText(e.target.value)}
-              placeholder="テキストを入力..."
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+              placeholder="正しいテキストを入力..."
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && customText.trim()) {
@@ -214,7 +260,7 @@ export function FixQueuePanel({
       </div>
 
       {/* Actions */}
-      <div className="p-3 border-t border-gray-300 space-y-2 bg-gray-200">
+      <div className="p-4 border-t border-gray-200 space-y-3 bg-gray-50">
         <button
           onClick={handleApply}
           disabled={
@@ -223,14 +269,31 @@ export function FixQueuePanel({
             (!showCustomInput && selectedCandidateIndex === null) ||
             (showCustomInput && !customText.trim())
           }
-          className="w-full py-2 bg-gray-900 text-white text-sm font-medium rounded hover:bg-gray-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+          className={cn(
+            'w-full py-3 text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2',
+            correctionMethod === 'ai_inpaint'
+              ? 'bg-purple-600 hover:bg-purple-700 text-white'
+              : 'bg-blue-600 hover:bg-blue-700 text-white'
+          )}
         >
           {isApplying ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {correctionMethod === 'ai_inpaint' ? 'AI生成中...' : '適用中...'}
+            </>
           ) : (
             <>
-              適用
-              <ChevronRight className="w-4 h-4" />
+              {correctionMethod === 'ai_inpaint' ? (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  AI修正を適用
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  適用して次へ
+                </>
+              )}
             </>
           )}
         </button>
@@ -241,16 +304,16 @@ export function FixQueuePanel({
               setShowCustomInput(!showCustomInput);
               if (!showCustomInput) setSelectedCandidateIndex(null);
             }}
-            className="flex-1 py-1.5 text-xs text-gray-600 hover:bg-gray-300 rounded transition-colors flex items-center justify-center gap-1"
+            className="flex-1 py-2 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors flex items-center justify-center gap-1.5"
           >
-            <Edit3 className="w-3 h-3" />
-            {showCustomInput ? 'キャンセル' : '手動'}
+            <Edit3 className="w-4 h-4" />
+            {showCustomInput ? 'キャンセル' : '手動入力'}
           </button>
           <button
             onClick={onSkip}
-            className="flex-1 py-1.5 text-xs text-gray-600 hover:bg-gray-300 rounded transition-colors flex items-center justify-center gap-1"
+            className="flex-1 py-2 text-sm font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors flex items-center justify-center gap-1.5"
           >
-            <SkipForward className="w-3 h-3" />
+            <SkipForward className="w-4 h-4" />
             スキップ
           </button>
         </div>
