@@ -4,6 +4,7 @@
  * - Uses credit/ticket system with atomic deduction
  * - Handles refunds on failure
  * - Prevents duplicate requests via request_id
+ * - Supports reference design for style matching (like wordpressdemo)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,6 +19,55 @@ const COSTS = {
   image_generation: 10,  // 画像生成: 10クレジット
   text_generation: 1,    // テキスト生成: 1クレジット
 };
+
+// 出力画像サイズの型定義
+const VALID_IMAGE_SIZES = ['1K', '2K', '4K'] as const;
+type GeminiImageSize = typeof VALID_IMAGE_SIZES[number];
+
+// 安全なサイズ変換関数
+function toValidImageSize(size: string | undefined | null): GeminiImageSize {
+  if (!size) return '4K'; // デフォルトは4K（高画質）
+
+  const upperSize = size.toUpperCase();
+
+  if (VALID_IMAGE_SIZES.includes(upperSize as GeminiImageSize)) {
+    return upperSize as GeminiImageSize;
+  }
+
+  if (upperSize === 'ORIGINAL') {
+    return '4K';
+  }
+
+  console.warn(`[INPAINT] Invalid outputSize "${size}", falling back to 4K`);
+  return '4K';
+}
+
+// デザイン定義（参考画像から解析されたスタイル）
+interface DesignDefinition {
+  colorPalette: {
+    primary: string;
+    secondary: string;
+    accent: string;
+    background: string;
+  };
+  typography: {
+    style: string;
+    mood: string;
+  };
+  layout: {
+    density: string;
+    style: string;
+  };
+  vibe: string;
+  description: string;
+}
+
+interface MaskArea {
+  x: number;      // 選択範囲の左上X（0-1の比率）
+  y: number;      // 選択範囲の左上Y（0-1の比率）
+  width: number;  // 選択範囲の幅（0-1の比率）
+  height: number; // 選択範囲の高さ（0-1の比率）
+}
 
 // Initialize Supabase client with service role for server-side operations
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://REMOVED_PROJECT_REF.supabase.co';
@@ -465,85 +515,203 @@ ${params.context ? `コンテキスト: ${params.context}` : ''}
   };
 }
 
-// Inpaint image
+// Inpaint image - Enhanced version matching wordpressdemo
 async function inpaintImage(params: {
   imageBase64: string;
-  masks: Array<{ x: number; y: number; width: number; height: number }>;
+  mask?: MaskArea;        // 単一選択（後方互換性）
+  masks?: MaskArea[];     // 複数選択
   prompt: string;
-  referenceDesign?: string;
+  referenceDesign?: DesignDefinition;    // 参考デザイン定義
+  referenceImageBase64?: string;         // 参考デザイン画像
+  outputSize?: string;                   // 出力サイズ 1K, 2K, 4K
 }): Promise<{ success: boolean; imageBase64?: string; error?: string }> {
   const apiKey = getApiKey();
 
-  const maskDescriptions = params.masks.map((mask, i) => {
-    const centerX = Math.round((mask.x + mask.width / 2) * 100);
-    const centerY = Math.round((mask.y + mask.height / 2) * 100);
-    return `領域${i + 1}: 中心位置(横${centerX}%, 縦${centerY}%), サイズ(幅${Math.round(mask.width * 100)}%, 高さ${Math.round(mask.height * 100)}%)`;
+  // 複数選択か単一選択か判定
+  const allMasks: MaskArea[] = params.masks && params.masks.length > 0
+    ? params.masks
+    : (params.mask ? [params.mask] : []);
+
+  // 出力サイズを安全に変換
+  const validImageSize = toValidImageSize(params.outputSize);
+  console.log(`[INPAINT] Output size: requested="${params.outputSize}", using="${validImageSize}"`);
+
+  // 位置説明を生成
+  const getPositionDesc = (m: MaskArea) => {
+    const xPercent = Math.round(m.x * 100);
+    const yPercent = Math.round(m.y * 100);
+    let pos = '';
+    if (yPercent < 33) pos = '上部';
+    else if (yPercent < 66) pos = '中央';
+    else pos = '下部';
+    if (xPercent < 33) pos += '左側';
+    else if (xPercent < 66) pos += '中央';
+    else pos += '右側';
+    return pos;
+  };
+
+  const areasDescription = allMasks.map((m, i) => {
+    const xPercent = Math.round(m.x * 100);
+    const yPercent = Math.round(m.y * 100);
+    const widthPercent = Math.round(m.width * 100);
+    const heightPercent = Math.round(m.height * 100);
+    return `領域${i + 1}: ${getPositionDesc(m)}（左から${xPercent}%、上から${yPercent}%、幅${widthPercent}%、高さ${heightPercent}%）`;
   }).join('\n');
 
-  const prompt = `
-画像の以下の領域を修正してください:
-${maskDescriptions}
-
-修正内容: ${params.prompt}
-${params.referenceDesign ? `参考デザイン: ${params.referenceDesign}` : ''}
-
-重要な指示:
-- 指定された領域のみを修正し、他の部分は絶対に変更しないでください
-- 周囲のデザイン・色調・スタイルと完全に調和させてください
-- 日本語テキストの場合は読みやすく美しいフォントを使用してください
-- 元の画像の解像度と品質を維持してください
-- 背景色や周囲の要素との境界が自然になるようにしてください
+  // 参考デザインスタイルの説明を生成
+  let designStyleSection = '';
+  if (params.referenceDesign || params.referenceImageBase64) {
+    if (params.referenceImageBase64) {
+      designStyleSection = `
+【参考デザイン画像について】
+2枚目の画像は「参考デザイン」です。この画像のデザインスタイル（色使い、雰囲気、トーン、質感）を参考にして、1枚目の画像を編集してください。
 `;
+    }
+    if (params.referenceDesign) {
+      const { colorPalette, typography, layout, vibe, description } = params.referenceDesign;
+      designStyleSection += `
+【参考デザインスタイル解析結果】
+- カラーパレット:
+  - プライマリ: ${colorPalette.primary}
+  - セカンダリ: ${colorPalette.secondary}
+  - アクセント: ${colorPalette.accent}
+  - 背景: ${colorPalette.background}
+- タイポグラフィ: ${typography.style}（${typography.mood}）
+- レイアウト: ${layout.style}（密度: ${layout.density}）
+- 雰囲気: ${vibe}
+- スタイル説明: ${description}
+
+編集後の画像は上記のデザインスタイル（色味、雰囲気、トーン）に合わせてください。
+`;
+    }
+  }
+
+  // テキスト追加系の指示かどうかを判定
+  const isTextAddition = /(?:入れ|追加|書い|変更|テキスト|文字|タイトル|見出し)/i.test(params.prompt);
+
+  // インペインティング用プロンプト - 日本語LP最適化版
+  const inpaintPrompt = `あなたは日本語デザイン専門の画像編集エキスパートです。提供された画像を編集して、新しい画像を生成してください。
+
+【修正指示】
+${params.prompt}
+
+【対象エリア】
+${areasDescription}
+${designStyleSection}
+【重要なルール】
+1. 指定されたエリア内の要素のみを修正してください
+2. 文字・テキストの変更が指示されている場合は、一文字ずつ正確にその文字列に置き換えてください
+3. ${(params.referenceDesign || params.referenceImageBase64) ? '参考デザインスタイルの色味、雰囲気、トーンを反映してください' : '元の画像のスタイル、フォント、色使いをできる限り維持してください'}
+4. 修正箇所以外は変更しないでください
+5. 画像全体を出力してください（説明文は不要です）
+${isTextAddition ? `
+【🇯🇵 日本語テキスト追加時の厳守事項】
+- 絶対に白い背景や白い余白を追加しないでください
+- テキストは選択エリアの既存の背景色・画像の上に直接描画してください
+- ひらがな、カタカナ、漢字は一文字ずつ正確に描画（類似文字への置換禁止）
+- ゴシック体（サンセリフ）で太めの線、文字間は均等配置
+- 背景に対して十分なコントラストを確保（背景が明るい場合は暗い文字、逆も同様）
+- 文字のエッジは鮮明に、アンチエイリアスは最小限
+
+【⚠️ 文字サイズ重要ルール - TEXT SIZE RULE】
+- 元のテキストより10-20%大きめに生成すること（小さい文字は崩れやすい）
+- 最小フォントサイズ: 各文字は20ピクセル以上の高さを確保
+- 小さいエリアの場合: テキストを少し大きく・太くして読みやすさを確保
+` : ''}
+
+Generate the complete edited image with pixel-perfect quality now.`;
+
+  // リクエストのpartsを構築
+  const requestParts: any[] = [
+    {
+      inlineData: {
+        mimeType: 'image/png',
+        data: params.imageBase64.replace(/^data:image\/\w+;base64,/, '')
+      }
+    }
+  ];
+
+  // 参考デザイン画像がある場合は追加
+  if (params.referenceImageBase64) {
+    const refBase64 = params.referenceImageBase64.replace(/^data:image\/\w+;base64,/, '');
+    const refMimeMatch = params.referenceImageBase64.match(/^data:(image\/\w+);base64,/);
+    const refMimeType = refMimeMatch ? refMimeMatch[1] : 'image/png';
+
+    requestParts.push({
+      inlineData: {
+        mimeType: refMimeType,
+        data: refBase64
+      }
+    });
+  }
+
+  // プロンプトを追加
+  requestParts.push({ text: inpaintPrompt });
 
   // Retry logic
   let lastError: Error | null = null;
   for (let i = 0; i < 3; i++) {
     try {
+      console.log(`[INPAINT] Attempt ${i + 1}/3...`);
       const response = await fetch(
         `${GEMINI_API_BASE}/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: 'image/png',
-                      data: params.imageBase64.replace(/^data:image\/\w+;base64,/, ''),
-                    },
-                  },
-                  { text: prompt },
-                ],
-              },
-            ],
+            contents: [{
+              parts: requestParts
+            }],
             generationConfig: {
-              temperature: 0.6,
               responseModalities: ['IMAGE', 'TEXT'],
+              temperature: 0.6,
+              imageConfig: {
+                imageSize: validImageSize
+              }
             },
+            toolConfig: {
+              functionCallingConfig: {
+                mode: 'NONE'
+              }
+            }
           }),
         }
       );
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error?.message || `Gemini API error: ${response.status}`);
-      }
+      if (response.ok) {
+        console.log(`[INPAINT] Success on attempt ${i + 1}`);
+        const data = await response.json();
+        const parts = data.candidates?.[0]?.content?.parts || [];
 
-      const data = await response.json();
-      const parts = data.candidates?.[0]?.content?.parts || [];
-
-      for (const part of parts) {
-        if (part.inlineData?.mimeType?.startsWith('image/')) {
-          return {
-            success: true,
-            imageBase64: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
-          };
+        for (const part of parts) {
+          if (part.inlineData?.mimeType?.startsWith('image/')) {
+            return {
+              success: true,
+              imageBase64: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
+            };
+          }
         }
+
+        return { success: false, error: 'No image generated in response' };
       }
 
-      return { success: false, error: 'No image generated in response' };
+      // 503/429エラーの場合はリトライ
+      if (response.status === 503 || response.status === 429) {
+        const errorText = await response.text();
+        console.error(`[INPAINT] Attempt ${i + 1} failed with ${response.status}:`, errorText);
+        lastError = new Error(`インペインティングに失敗しました: ${response.status}`);
+
+        if (i < 2) {
+          const waitTime = Math.pow(2, i + 1) * 1000;
+          console.log(`[INPAINT] Retrying in ${waitTime}ms...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('Gemini API error:', errorText);
+        throw new Error(`インペインティングに失敗しました: ${response.status}`);
+      }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       const errorMessage = lastError.message.toLowerCase();

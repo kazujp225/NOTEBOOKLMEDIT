@@ -7,7 +7,7 @@ import { TopBar } from './TopBar';
 import { StatusBar } from './StatusBar';
 import { PagesPanel } from './PagesPanel';
 import { CanvasViewer } from './CanvasViewer';
-import { FixQueuePanel } from './FixQueuePanel';
+import { FixQueuePanel, type AIInpaintOptions } from './FixQueuePanel';
 import { ExportPanel } from '@/components/panels/ExportPanel';
 import { useToast } from '@/components/ui/Toast';
 import { useAppStore, generateId, type Issue, type BBox, type PageData, type ProjectWithImages } from '@/lib/store';
@@ -145,7 +145,8 @@ export function Editor({ projectId }: EditorProps) {
   const handleApply = useCallback(async (
     text: string,
     method: 'text_overlay' | 'ai_inpaint',
-    candidateIndex?: number
+    candidateIndex?: number,
+    aiOptions?: AIInpaintOptions
   ) => {
     if (!selectedIssue || !project || !currentPage) return;
 
@@ -171,6 +172,9 @@ export function Editor({ projectId }: EditorProps) {
           imageBase64: currentPage.imageDataUrl,
           masks: [mask],
           prompt: `この領域のテキスト「${selectedIssue.ocrText || ''}」を「${text}」に修正してください。周囲のデザインと調和するようにしてください。`,
+          referenceDesign: aiOptions?.referenceDesign,
+          referenceImageBase64: aiOptions?.referenceImageBase64,
+          outputSize: aiOptions?.outputSize || '4K',
         });
 
         if (!result.success || !result.imageBase64) {
