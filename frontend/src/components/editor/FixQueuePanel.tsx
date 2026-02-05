@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   ChevronRight,
   ChevronLeft,
@@ -11,8 +11,13 @@ import {
   Sparkles,
   Type,
   Square,
+  Upload,
+  Image as ImageIcon,
+  X,
+  Settings2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { analyzeDesign, type DesignDefinition } from '@/lib/gemini';
 
 export interface Candidate {
   text: string;
@@ -34,6 +39,12 @@ export interface IssueForFixQueue {
   candidates?: Candidate[];
 }
 
+export interface AIInpaintOptions {
+  referenceDesign?: DesignDefinition;
+  referenceImageBase64?: string;
+  outputSize: '1K' | '2K' | '4K';
+}
+
 interface FixQueuePanelProps {
   issues: IssueForFixQueue[];
   currentIssue: IssueForFixQueue | null;
@@ -41,7 +52,7 @@ interface FixQueuePanelProps {
   onSelectIssue?: (issue: IssueForFixQueue) => void;
   onNext: () => void;
   onPrevious: () => void;
-  onApply: (text: string, method: 'text_overlay' | 'ai_inpaint', candidateIndex?: number) => Promise<void>;
+  onApply: (text: string, method: 'text_overlay' | 'ai_inpaint', candidateIndex?: number, aiOptions?: AIInpaintOptions) => Promise<void>;
   onSkip: () => void;
   isApplying: boolean;
   pageWidth?: number;
@@ -63,6 +74,14 @@ export function FixQueuePanel({
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customText, setCustomText] = useState('');
   const [correctionMethod, setCorrectionMethod] = useState<'text_overlay' | 'ai_inpaint'>('text_overlay');
+
+  // AI Options
+  const [showAIOptions, setShowAIOptions] = useState(false);
+  const [outputSize, setOutputSize] = useState<'1K' | '2K' | '4K'>('4K');
+  const [referenceImage, setReferenceImage] = useState<string | null>(null);
+  const [referenceDesign, setReferenceDesign] = useState<DesignDefinition | null>(null);
+  const [isAnalyzingDesign, setIsAnalyzingDesign] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Progress calculations
   const resolvedCount = issues.filter(
@@ -87,6 +106,38 @@ export function FixQueuePanel({
     setCustomText('');
   }, [currentIssue?.id]);
 
+  // Handle reference image upload
+  const handleReferenceImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string;
+      setReferenceImage(base64);
+
+      // Analyze design automatically
+      setIsAnalyzingDesign(true);
+      try {
+        const design = await analyzeDesign(undefined, base64);
+        setReferenceDesign(design);
+      } catch (err) {
+        console.error('Failed to analyze design:', err);
+      } finally {
+        setIsAnalyzingDesign(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearReferenceImage = () => {
+    setReferenceImage(null);
+    setReferenceDesign(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleApply = async () => {
     if (!currentIssue) return;
 
@@ -100,7 +151,13 @@ export function FixQueuePanel({
 
     if (!text.trim()) return;
 
-    await onApply(text, correctionMethod, candidateIdx);
+    const aiOptions: AIInpaintOptions = {
+      outputSize,
+      referenceDesign: referenceDesign || undefined,
+      referenceImageBase64: referenceImage || undefined,
+    };
+
+    await onApply(text, correctionMethod, candidateIdx, aiOptions);
     setCustomText('');
     setShowCustomInput(false);
     setSelectedCandidateIndex(null);
@@ -243,6 +300,92 @@ export function FixQueuePanel({
               : 'Gemini AIで画像を再生成（10クレジット）'}
           </p>
         </div>
+
+        {/* AI Options (only shown when AI mode selected) */}
+        {correctionMethod === 'ai_inpaint' && (
+          <div className="space-y-3">
+            <button
+              onClick={() => setShowAIOptions(!showAIOptions)}
+              className="flex items-center gap-2 text-xs text-purple-600 hover:text-purple-800"
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              AI設定 {showAIOptions ? '▲' : '▼'}
+            </button>
+
+            {showAIOptions && (
+              <div className="p-3 bg-purple-50 rounded-lg border border-purple-200 space-y-3">
+                {/* Output Size */}
+                <div>
+                  <p className="text-xs text-purple-700 mb-2">出力サイズ</p>
+                  <div className="flex gap-2">
+                    {(['1K', '2K', '4K'] as const).map((size) => (
+                      <button
+                        key={size}
+                        onClick={() => setOutputSize(size)}
+                        className={cn(
+                          'flex-1 py-1.5 text-xs font-medium rounded border transition-colors',
+                          outputSize === size
+                            ? 'border-purple-500 bg-purple-100 text-purple-700'
+                            : 'border-purple-200 bg-white text-purple-600 hover:border-purple-300'
+                        )}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Reference Design */}
+                <div>
+                  <p className="text-xs text-purple-700 mb-2">参考デザイン（任意）</p>
+                  {referenceImage ? (
+                    <div className="relative">
+                      <img
+                        src={referenceImage}
+                        alt="参考デザイン"
+                        className="w-full h-20 object-cover rounded border border-purple-200"
+                      />
+                      <button
+                        onClick={clearReferenceImage}
+                        className="absolute top-1 right-1 p-1 bg-white rounded-full shadow hover:bg-gray-100"
+                      >
+                        <X className="w-3 h-3 text-gray-600" />
+                      </button>
+                      {isAnalyzingDesign && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-white/80 rounded">
+                          <Loader2 className="w-5 h-5 text-purple-600 animate-spin" />
+                        </div>
+                      )}
+                      {referenceDesign && !isAnalyzingDesign && (
+                        <div className="mt-2 text-xs text-purple-600">
+                          ✓ デザイン解析完了: {referenceDesign.vibe}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full py-3 border-2 border-dashed border-purple-200 rounded-lg text-purple-600 hover:border-purple-300 hover:bg-purple-50 transition-colors flex items-center justify-center gap-2 text-xs"
+                    >
+                      <Upload className="w-4 h-4" />
+                      画像をアップロード
+                    </button>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleReferenceImageUpload}
+                    className="hidden"
+                  />
+                  <p className="text-[10px] text-purple-500 mt-1">
+                    スタイル（色・雰囲気）を参考にします
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Candidates */}
         {candidates.length > 0 && (

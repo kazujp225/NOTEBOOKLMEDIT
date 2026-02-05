@@ -2,20 +2,49 @@
  * Gemini API Client
  * Calls server-side API route to keep API key secure
  * Uses credit/ticket system with atomic deduction
+ * Enhanced with reference design support (like wordpressdemo)
  */
 
 import { supabase } from './supabase';
 
+// デザイン定義（参考画像から解析されたスタイル）
+export interface DesignDefinition {
+  colorPalette: {
+    primary: string;
+    secondary: string;
+    accent: string;
+    background: string;
+  };
+  typography: {
+    style: string;
+    mood: string;
+  };
+  layout: {
+    density: string;
+    style: string;
+  };
+  vibe: string;
+  description: string;
+}
+
 export interface InpaintRequest {
   imageBase64: string;
-  masks: Array<{
+  mask?: {
+    x: number;      // 0-1 ratio
+    y: number;      // 0-1 ratio
+    width: number;  // 0-1 ratio
+    height: number; // 0-1 ratio
+  };
+  masks?: Array<{
     x: number;      // 0-1 ratio
     y: number;      // 0-1 ratio
     width: number;  // 0-1 ratio
     height: number; // 0-1 ratio
   }>;
   prompt: string;
-  referenceDesign?: string;
+  referenceDesign?: DesignDefinition;    // 参考デザイン定義
+  referenceImageBase64?: string;         // 参考デザイン画像
+  outputSize?: '1K' | '2K' | '4K';       // 出力画像サイズ
 }
 
 export interface InpaintResponse {
@@ -102,6 +131,7 @@ export async function generateCandidates(
 
 /**
  * Inpaint image region using Gemini
+ * Enhanced with reference design support
  */
 export async function inpaintImage(request: InpaintRequest): Promise<InpaintResponse> {
   const token = await getAuthToken();
@@ -134,6 +164,38 @@ export async function inpaintImage(request: InpaintRequest): Promise<InpaintResp
     }
 
     return { success: false, error: error.error || `API error: ${response.status}` };
+  }
+
+  return response.json();
+}
+
+/**
+ * Analyze design from reference image
+ */
+export async function analyzeDesign(
+  imageUrl?: string,
+  imageBase64?: string
+): Promise<DesignDefinition> {
+  const token = await getAuthToken();
+  if (!token) {
+    throw new Error('認証が必要です。ログインしてください。');
+  }
+
+  const response = await fetch('/api/analyze-design', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      imageUrl,
+      imageBase64,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'デザイン解析に失敗しました');
   }
 
   return response.json();
