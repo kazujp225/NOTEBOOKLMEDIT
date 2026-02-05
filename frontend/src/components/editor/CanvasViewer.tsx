@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip } from '@/components/ui/Tooltip';
 
@@ -33,6 +33,7 @@ interface CanvasViewerProps {
   selectedIssueId: string | null;
   onIssueClick: (issue: IssueForCanvas) => void;
   onCreateIssue?: (bbox: BBox) => void;
+  onDeleteIssue?: (issueId: string) => void;
   zoom: number;
   onZoomChange: (zoom: number) => void;
 }
@@ -45,6 +46,7 @@ export function CanvasViewer({
   selectedIssueId,
   onIssueClick,
   onCreateIssue,
+  onDeleteIssue,
   zoom,
   onZoomChange,
 }: CanvasViewerProps) {
@@ -285,36 +287,55 @@ export function CanvasViewer({
 
             {/* Issue boxes */}
             {imageLoaded &&
-              issues.map((issue) => (
-                <div
-                  key={issue.id}
-                  className={getIssueBoxClass(issue)}
-                  style={{
-                    left: issue.bbox.x * effectiveZoom,
-                    top: issue.bbox.y * effectiveZoom,
-                    width: issue.bbox.width * effectiveZoom,
-                    height: issue.bbox.height * effectiveZoom,
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onIssueClick(issue);
-                  }}
-                  role="button"
-                  aria-label={`Issue: ${issue.ocr_text?.slice(0, 20) || 'Unknown'}`}
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
+              issues.map((issue) => {
+                const isSelected = issue.id === selectedIssueId;
+                return (
+                  <div
+                    key={issue.id}
+                    className={getIssueBoxClass(issue)}
+                    style={{
+                      left: issue.bbox.x * effectiveZoom,
+                      top: issue.bbox.y * effectiveZoom,
+                      width: issue.bbox.width * effectiveZoom,
+                      height: issue.bbox.height * effectiveZoom,
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
                       onIssueClick(issue);
-                    }
-                  }}
-                >
-                  {/* Tooltip on hover */}
-                  <div className="absolute -top-7 left-0 px-2 py-1 text-xs font-medium bg-gray-900 text-white rounded shadow-lg opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20">
-                    {issue.ocr_text?.slice(0, 30) || 'Issue'}
-                    {(issue.ocr_text?.length || 0) > 30 && '...'}
+                    }}
+                    role="button"
+                    aria-label={`Issue: ${issue.ocr_text?.slice(0, 20) || 'Unknown'}`}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        onIssueClick(issue);
+                      }
+                      if (e.key === 'Delete' || e.key === 'Backspace') {
+                        onDeleteIssue?.(issue.id);
+                      }
+                    }}
+                  >
+                    {/* Delete button - shown when selected */}
+                    {isSelected && onDeleteIssue && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteIssue(issue.id);
+                        }}
+                        className="absolute -top-3 -right-3 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-lg z-30 transition-colors"
+                        aria-label="削除"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                    {/* Tooltip on hover */}
+                    <div className="absolute -top-7 left-0 px-2 py-1 text-xs font-medium bg-gray-900 text-white rounded shadow-lg opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20">
+                      {issue.ocr_text?.slice(0, 30) || 'Issue'}
+                      {(issue.ocr_text?.length || 0) > 30 && '...'}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
             {/* Drawing rectangle */}
             {drawingRect && (

@@ -29,6 +29,7 @@ export function Editor({ projectId }: EditorProps) {
   const updateProject = useAppStore((state) => state.updateProject);
   const addIssue = useAppStore((state) => state.addIssue);
   const updateIssue = useAppStore((state) => state.updateIssue);
+  const deleteIssue = useAppStore((state) => state.deleteIssue);
 
   // Loaded project with images
   const [project, setProject] = useState<ProjectWithImages | null>(null);
@@ -323,6 +324,28 @@ export function Editor({ projectId }: EditorProps) {
     addToast('success', 'Issue を追加しました');
   }, [projectId, currentPageNumber, issues.length, addIssue, addToast]);
 
+  // Delete issue from canvas
+  const handleDeleteIssue = useCallback((issueId: string) => {
+    deleteIssue(projectId, issueId);
+
+    // Update local state
+    setProject((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        issues: prev.issues.filter((i) => i.id !== issueId),
+      };
+    });
+
+    // Clear selection if deleted issue was selected
+    if (selectedIssue?.id === issueId) {
+      setSelectedIssue(null);
+      setCurrentIssueIndex(0);
+    }
+
+    addToast('success', '選択箇所を削除しました');
+  }, [projectId, selectedIssue?.id, deleteIssue, addToast]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -459,6 +482,7 @@ export function Editor({ projectId }: EditorProps) {
               if (storeIssue) handleIssueSelect(storeIssue);
             }}
             onCreateIssue={handleCreateIssue}
+            onDeleteIssue={handleDeleteIssue}
             zoom={zoom}
             onZoomChange={setZoom}
           />
