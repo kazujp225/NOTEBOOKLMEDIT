@@ -144,31 +144,58 @@ export function Editor({ projectId }: EditorProps) {
 
   const handleApply = useCallback(async (
     text: string,
-    method: 'text_overlay' | 'nano_banana',
+    method: 'text_overlay' | 'ai_inpaint',
     candidateIndex?: number
   ) => {
     if (!selectedIssue || !project || !currentPage) return;
 
     setIsApplying(true);
     try {
-      // Dynamic import to avoid SSR issues
-      const { applyTextOverlay } = await import('@/lib/pdf-utils');
-
       // Save current image for undo
       const previousImageDataUrl = currentPage.imageDataUrl;
+      let newImageDataUrl: string;
 
-      // Apply text overlay to the image
-      const newImageDataUrl = await applyTextOverlay(
-        currentPage.imageDataUrl,
-        selectedIssue.bbox,
-        text,
-        {
-          fontSize: Math.min(selectedIssue.bbox.height * 0.8, 24),
-          fontFamily: 'Noto Sans JP, sans-serif',
-          color: '#000000',
-          backgroundColor: '#ffffff',
+      if (method === 'ai_inpaint') {
+        // Use Gemini AI for inpainting
+        const { inpaintImage } = await import('@/lib/gemini');
+
+        // Convert bbox to 0-1 ratio
+        const mask = {
+          x: selectedIssue.bbox.x / currentPage.width,
+          y: selectedIssue.bbox.y / currentPage.height,
+          width: selectedIssue.bbox.width / currentPage.width,
+          height: selectedIssue.bbox.height / currentPage.height,
+        };
+
+        const result = await inpaintImage({
+          imageBase64: currentPage.imageDataUrl,
+          masks: [mask],
+          prompt: `この領域のテキスト「${selectedIssue.ocrText || ''}」を「${text}」に修正してください。周囲のデザインと調和するようにしてください。`,
+        });
+
+        if (!result.success || !result.imageBase64) {
+          throw new Error(result.error || 'AI修正に失敗しました');
         }
-      );
+
+        newImageDataUrl = result.imageBase64;
+        addToast('success', 'AI修正を適用しました');
+      } else {
+        // Use simple text overlay
+        const { applyTextOverlay } = await import('@/lib/pdf-utils');
+
+        newImageDataUrl = await applyTextOverlay(
+          currentPage.imageDataUrl,
+          selectedIssue.bbox,
+          text,
+          {
+            fontSize: Math.min(selectedIssue.bbox.height * 0.8, 24),
+            fontFamily: 'Noto Sans JP, sans-serif',
+            color: '#000000',
+            backgroundColor: '#ffffff',
+          }
+        );
+        addToast('success', '修正を適用しました');
+      }
 
       // Save new image to IndexedDB
       const imageKey = `${projectId}/page-${currentPageNumber}`;
@@ -200,8 +227,6 @@ export function Editor({ projectId }: EditorProps) {
         previousImageDataUrl,
       }]);
 
-      addToast('success', '修正を適用しました');
-
       // Move to next unresolved issue
       const nextUnresolved = issues.find(
         (i, idx) => idx > currentIssueIndex && i.status !== 'corrected' && i.status !== 'skipped'
@@ -213,7 +238,7 @@ export function Editor({ projectId }: EditorProps) {
       }
     } catch (err) {
       console.error('Apply correction error:', err);
-      addToast('error', '修正の適用に失敗しました');
+      addToast('error', err instanceof Error ? err.message : '修正の適用に失敗しました');
     } finally {
       setIsApplying(false);
     }
