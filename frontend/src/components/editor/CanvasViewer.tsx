@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ZoomIn, ZoomOut, Maximize, Plus, MousePointer, Square } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip } from '@/components/ui/Tooltip';
 
@@ -56,10 +56,11 @@ export function CanvasViewer({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   // ROI selection mode
-  const [mode, setMode] = useState<'select' | 'draw'>('select');
+  const [mode, setMode] = useState<'select' | 'draw'>('draw'); // Default to draw mode
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
   const [drawEnd, setDrawEnd] = useState({ x: 0, y: 0 });
+  const [showHint, setShowHint] = useState(true);
 
   // Update container size on resize
   useEffect(() => {
@@ -81,6 +82,15 @@ export function CanvasViewer({
   useEffect(() => {
     setImageLoaded(false);
   }, [imageUrl]);
+
+  // Hide hint after first issue created or after 10 seconds
+  useEffect(() => {
+    if (issues.length > 0) {
+      setShowHint(false);
+    }
+    const timer = setTimeout(() => setShowHint(false), 15000);
+    return () => clearTimeout(timer);
+  }, [issues.length]);
 
   // Calculate fit scale
   const fitScale = Math.min(
@@ -138,6 +148,7 @@ export function CanvasViewer({
       setIsDrawing(true);
       setDrawStart(pos);
       setDrawEnd(pos);
+      setShowHint(false);
     } else if (e.button === 1 || (e.button === 0 && e.altKey)) {
       e.preventDefault();
       setIsDragging(true);
@@ -176,9 +187,6 @@ export function CanvasViewer({
           height: Math.round(height),
         });
       }
-
-      // Reset to select mode
-      setMode('select');
     }
     setIsDragging(false);
   };
@@ -320,6 +328,27 @@ export function CanvasViewer({
                 }}
               />
             )}
+
+            {/* Overlay hint when no issues and draw mode */}
+            {imageLoaded && issues.length === 0 && showHint && mode === 'draw' && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/5 pointer-events-none">
+                <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8 max-w-md text-center border border-gray-200">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center">
+                    <Plus className="w-8 h-8 text-blue-600" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">
+                    修正したい箇所を選択
+                  </h3>
+                  <p className="text-gray-600 mb-4">
+                    画像上でドラッグして、修正したいテキストや領域を囲んでください
+                  </p>
+                  <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                    <Square className="w-4 h-4" />
+                    <span>ドラッグで範囲選択</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -327,12 +356,12 @@ export function CanvasViewer({
       {/* Toolbar */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white/95 backdrop-blur rounded-full px-2 py-1.5 shadow-lg border border-gray-200">
         {/* Mode toggle */}
-        <Tooltip content="選択モード">
+        <Tooltip content="選択モード (既存のIssueをクリック)">
           <button
             onClick={() => setMode('select')}
             className={cn(
               'w-8 h-8 flex items-center justify-center rounded-full transition-colors',
-              mode === 'select' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
+              mode === 'select' ? 'bg-gray-200 text-gray-900' : 'hover:bg-gray-100 text-gray-500'
             )}
             aria-label="選択モード"
           >
@@ -340,12 +369,12 @@ export function CanvasViewer({
           </button>
         </Tooltip>
 
-        <Tooltip content="範囲選択で Issue 追加">
+        <Tooltip content="範囲選択モード (新規Issue作成)">
           <button
             onClick={() => setMode('draw')}
             className={cn(
               'w-8 h-8 flex items-center justify-center rounded-full transition-colors',
-              mode === 'draw' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
+              mode === 'draw' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 text-gray-500'
             )}
             aria-label="範囲選択"
           >
@@ -396,10 +425,11 @@ export function CanvasViewer({
         </Tooltip>
       </div>
 
-      {/* Mode indicator */}
+      {/* Top mode indicator when drawing */}
       {mode === 'draw' && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-blue-500 text-white text-sm font-medium rounded-full shadow-lg animate-fade-in">
-          ドラッグして範囲を選択
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-full shadow-lg flex items-center gap-2">
+          <Square className="w-4 h-4" />
+          範囲選択モード: ドラッグして修正箇所を選択
         </div>
       )}
     </div>

@@ -10,6 +10,7 @@ import {
   Check,
   Sparkles,
   Type,
+  Square,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -110,17 +111,51 @@ export function FixQueuePanel({
     return (
       <aside className="w-[320px] bg-white border-l border-gray-200 flex flex-col flex-shrink-0">
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4">
-            <Check className="w-6 h-6 text-green-600" />
-          </div>
-          <p className="text-base font-medium text-gray-900 mb-2">
-            {totalCount === 0 ? 'Issue なし' : '完了'}
-          </p>
-          <p className="text-sm text-gray-500">
-            {totalCount === 0
-              ? 'ドラッグで範囲を選択してください'
-              : '書き出しできます'}
-          </p>
+          {totalCount === 0 ? (
+            <>
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+                <Square className="w-8 h-8 text-blue-600" />
+              </div>
+              <p className="text-lg font-semibold text-gray-900 mb-2">
+                修正箇所を選択
+              </p>
+              <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                左の画像上で<br />
+                修正したい箇所をドラッグして<br />
+                範囲を選択してください
+              </p>
+              <div className="p-4 bg-blue-50 rounded-xl text-left w-full">
+                <p className="text-xs font-medium text-blue-800 mb-2">使い方</p>
+                <ol className="text-xs text-blue-700 space-y-1.5">
+                  <li className="flex items-start gap-2">
+                    <span className="bg-blue-200 text-blue-800 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">1</span>
+                    <span>画像上でドラッグして範囲選択</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="bg-blue-200 text-blue-800 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">2</span>
+                    <span>修正テキストを入力</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="bg-blue-200 text-blue-800 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">3</span>
+                    <span>「適用」で修正を反映</span>
+                  </li>
+                </ol>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                <Check className="w-8 h-8 text-green-600" />
+              </div>
+              <p className="text-lg font-semibold text-gray-900 mb-2">
+                すべて完了
+              </p>
+              <p className="text-sm text-gray-500">
+                修正が完了しました。<br />
+                右上の「書き出し」から保存できます。
+              </p>
+            </>
+          )}
         </div>
       </aside>
     );
