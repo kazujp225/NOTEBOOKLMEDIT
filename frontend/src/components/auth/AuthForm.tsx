@@ -81,9 +81,9 @@ export function AuthForm({ onSuccess }: AuthFormProps) {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="w-12 h-12 bg-gray-900 rounded-xl mx-auto mb-4 flex items-center justify-center">
-            <span className="text-xl font-bold text-white">N</span>
+            <span className="text-xl font-bold text-white">助</span>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900">NotebookLM 修正ツール</h1>
+          <h1 className="text-xl font-semibold text-gray-900">オタスケPDF</h1>
           <p className="text-sm text-gray-500 mt-1">PDF文字化け修正</p>
         </div>
 

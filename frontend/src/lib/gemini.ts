@@ -86,6 +86,43 @@ async function getAuthToken(): Promise<string | null> {
 }
 
 /**
+ * OCR a region of an image using Gemini Flash
+ */
+export async function ocrRegion(
+  imageBase64: string
+): Promise<{ text: string; balance?: number }> {
+  const token = await getAuthToken();
+  if (!token) {
+    throw new Error('認証が必要です。ログインしてください。');
+  }
+
+  const response = await fetch('/api/gemini', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      action: 'ocr_region',
+      request_id: generateRequestId(),
+      imageBase64,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+
+    if (response.status === 402) {
+      throw new Error(error.error || 'クレジットが不足しています');
+    }
+
+    throw new Error(error.error || `API error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Generate correction candidates using Gemini
  */
 export async function generateCandidates(

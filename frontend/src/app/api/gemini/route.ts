@@ -391,6 +391,62 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (action === 'ocr_region') {
+      const cost = COSTS.text_generation;
+
+      // Deduct credits first
+      const deductResult = await deductCredits(
+        userId,
+        request_id,
+        cost,
+        'OCRテキスト読み取り'
+      );
+
+      if (!deductResult.success) {
+        if (deductResult.error === 'duplicate_request') {
+          return NextResponse.json(
+            { error: 'このリクエストは既に処理されています' },
+            { status: 409 }
+          );
+        }
+        if (deductResult.error === 'insufficient_credits') {
+          return NextResponse.json(
+            { error: `クレジットが不足しています（残高: ${deductResult.balance}、必要: ${cost}）` },
+            { status: 402 }
+          );
+        }
+        return NextResponse.json(
+          { error: deductResult.error || 'クレジット処理に失敗しました' },
+          { status: 500 }
+        );
+      }
+
+      await recordRequest(request_id, userId, 'text_generation', cost, 'processing');
+
+      try {
+        const result = await ocrRegion(params);
+
+        await recordRequest(request_id, userId, 'text_generation', cost, 'completed');
+        await supabase
+          .from('generation_requests')
+          .update({ metadata: { result } })
+          .eq('request_id', request_id);
+
+        return NextResponse.json({ ...result, balance: deductResult.balance });
+      } catch (error) {
+        await refundCredits(userId, request_id, cost, 'OCR失敗による返金');
+        await recordRequest(
+          request_id,
+          userId,
+          'text_generation',
+          cost,
+          'refunded',
+          error instanceof Error ? error.message : 'Unknown error'
+        );
+        throw error;
+      }
+    }
+
     return NextResponse.json(
       { error: 'Invalid action' },
       { status: 400 }
@@ -727,4 +783,57 @@ Generate the complete edited image with pixel-perfect quality now.`;
   }
 
   return { success: false, error: lastError?.message || 'Unknown error' };
+}
+
+// OCR region using Gemini Flash
+async function ocrRegion(params: {
+  imageBase64: string;
+}): Promise<{ text: string }> {
+  const apiKey = getApiKey();
+
+  const prompt = `この画像に含まれるテキストを正確に読み取ってください。
+
+【ルール】
+- 画像内に見えるテキストだけをそのまま出力してください
+- 文字化け（�, □など）がある場合もそのまま出力してください
+- 改行はそのまま維持してください
+- テキスト以外の説明は一切不要です
+- テキストが見つからない場合は空文字を返してください`;
+
+  const response = await fetch(
+    `${GEMINI_API_BASE}/models/${GEMINI_TEXT_MODEL}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: params.imageBase64.replace(/^data:image\/\w+;base64,/, ''),
+                },
+              },
+              { text: prompt },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 1024,
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error?.message || `Gemini API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+  return { text: text.trim() };
 }

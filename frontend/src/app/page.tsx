@@ -64,12 +64,12 @@ export default function HomePage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gray-900 rounded-xl flex items-center justify-center">
-              <span className="text-lg font-bold text-white">N</span>
+              <span className="text-lg font-bold text-white">助</span>
             </div>
-            <span className="text-base font-semibold text-gray-900">NotebookLM 修正ツール</span>
+            <span className="text-base font-semibold text-gray-900">オタスケPDF</span>
           </div>
           <div className="flex items-center gap-6">
             <span className="text-sm text-gray-600">{user.email}</span>
@@ -85,18 +85,8 @@ export default function HomePage() {
       </header>
 
       {/* Main content */}
-      <main className="max-w-5xl mx-auto px-6 py-12">
-        {/* Title */}
-        <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold text-gray-900 mb-3">
-            PDF文字修正
-          </h1>
-          <p className="text-lg text-gray-600">
-            PDFをアップロードして、文字化けやぼやけた文字を修正できます。
-          </p>
-        </div>
-
-        {/* Uploader */}
+      <main className="px-8 py-12">
+        {/* Uploader - Google style clean card */}
         <div className="mb-16">
           <Uploader onUploadComplete={handleUploadComplete} />
         </div>

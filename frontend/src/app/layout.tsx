@@ -4,7 +4,7 @@ import { AuthProvider } from '@/components/auth/AuthProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'NotebookLM 修正ツール',
+  title: 'オタスケPDF',
   description: 'PDFの文字化け・ぼやけ文字を自動検出・修正',
 };
 

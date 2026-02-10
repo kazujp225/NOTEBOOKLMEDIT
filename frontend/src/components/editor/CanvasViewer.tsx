@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X, Trash2, Move, Copy } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X, Trash2, Move, Copy, Type, Shapes } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip } from '@/components/ui/Tooltip';
 
@@ -32,7 +32,7 @@ interface CanvasViewerProps {
   issues: IssueForCanvas[];
   selectedIssueId: string | null;
   onIssueClick: (issue: IssueForCanvas) => void;
-  onCreateIssue?: (bbox: BBox) => void;
+  onCreateIssue?: (bbox: BBox, editMode: 'text' | 'object') => void;
   onDeleteIssue?: (issueId: string) => void;
   zoom: number;
   onZoomChange: (zoom: number) => void;
@@ -59,6 +59,7 @@ export function CanvasViewer({
 
   // ROI selection mode
   const [mode, setMode] = useState<'select' | 'draw'>('draw'); // Default to draw mode
+  const [editMode, setEditMode] = useState<'text' | 'object'>('text');
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
   const [drawEnd, setDrawEnd] = useState({ x: 0, y: 0 });
@@ -187,7 +188,7 @@ export function CanvasViewer({
           y: Math.round(y),
           width: Math.round(width),
           height: Math.round(height),
-        });
+        }, editMode);
       }
     }
     setIsDragging(false);
@@ -435,6 +436,35 @@ export function CanvasViewer({
 
         <div className="w-px h-5 bg-gray-300 mx-1" />
 
+        {/* Edit mode toggle */}
+        <Tooltip content="テキスト修正モード">
+          <button
+            onClick={() => setEditMode('text')}
+            className={cn(
+              'w-8 h-8 flex items-center justify-center rounded-full transition-colors',
+              editMode === 'text' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 text-gray-500'
+            )}
+            aria-label="テキスト修正"
+          >
+            <Type className="w-4 h-4" />
+          </button>
+        </Tooltip>
+
+        <Tooltip content="オブジェクト修正モード">
+          <button
+            onClick={() => setEditMode('object')}
+            className={cn(
+              'w-8 h-8 flex items-center justify-center rounded-full transition-colors',
+              editMode === 'object' ? 'bg-purple-500 text-white' : 'hover:bg-gray-100 text-gray-500'
+            )}
+            aria-label="オブジェクト修正"
+          >
+            <Shapes className="w-4 h-4" />
+          </button>
+        </Tooltip>
+
+        <div className="w-px h-5 bg-gray-300 mx-1" />
+
         <Tooltip content="縮小 (X)">
           <button
             onClick={() => onZoomChange(Math.max(0.25, zoom - 0.25))}
@@ -478,9 +508,12 @@ export function CanvasViewer({
 
       {/* Top mode indicator when drawing */}
       {mode === 'draw' && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-full shadow-lg flex items-center gap-2">
-          <Square className="w-4 h-4" />
-          範囲選択モード: ドラッグして修正箇所を選択
+        <div className={cn(
+          'absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 text-white text-sm font-medium rounded-full shadow-lg flex items-center gap-2',
+          editMode === 'text' ? 'bg-blue-600' : 'bg-purple-600'
+        )}>
+          {editMode === 'text' ? <Type className="w-4 h-4" /> : <Shapes className="w-4 h-4" />}
+          {editMode === 'text' ? 'テキスト修正: ドラッグして文字を選択' : 'オブジェクト修正: ドラッグして対象を選択'}
         </div>
       )}
     </div>
