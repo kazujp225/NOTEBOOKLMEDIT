@@ -269,7 +269,17 @@ export function CanvasViewer({
               style={{
                 imageRendering: zoom > 1.5 ? 'pixelated' : 'auto',
               }}
-              onLoad={() => setImageLoaded(true)}
+              onLoad={() => {
+                console.log('[CanvasViewer] Image loaded successfully, src length:', imageUrl?.length);
+                setImageLoaded(true);
+              }}
+              onError={(e) => {
+                console.error('[CanvasViewer] Image failed to load:', {
+                  srcLength: imageUrl?.length,
+                  srcPrefix: imageUrl?.substring(0, 100),
+                  error: e,
+                });
+              }}
               draggable={false}
             />
 
