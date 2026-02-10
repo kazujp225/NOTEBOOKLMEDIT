@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import {
   FileText,
-  Presentation,
   Download,
   Loader2,
   CheckCircle2,
@@ -23,7 +22,6 @@ type ExportStatus = 'idle' | 'loading' | 'processing' | 'completed' | 'error';
 
 interface ExportState {
   pdf: { status: ExportStatus; url?: string; error?: string };
-  pptx: { status: ExportStatus; url?: string; error?: string };
 }
 
 export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
@@ -35,7 +33,6 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
   const [pages, setPages] = useState<PageData[]>([]);
   const [exports, setExports] = useState<ExportState>({
     pdf: { status: 'idle' },
-    pptx: { status: 'idle' },
   });
   const [isVisible, setIsVisible] = useState(false);
 
@@ -126,73 +123,12 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
     }
   };
 
-  const handleExportPptx = async () => {
-    if (!projectMeta || pages.length === 0) return;
-
-    setExports((prev) => ({
-      ...prev,
-      pptx: { status: 'processing' },
-    }));
-
-    try {
-      // Load PptxGenJS from CDN to avoid Node.js dependencies
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let PptxGenJS = (window as any).PptxGenJS;
-
-      if (!PptxGenJS) {
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error('Failed to load PptxGenJS'));
-          document.head.appendChild(script);
-        });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        PptxGenJS = (window as any).PptxGenJS;
-      }
-
-      const pptx = new PptxGenJS();
-      pptx.layout = 'LAYOUT_16x9';
-
-      for (const page of pages) {
-        const slide = pptx.addSlide();
-
-        // Add page image as background
-        slide.addImage({
-          data: page.imageDataUrl,
-          x: 0,
-          y: 0,
-          w: '100%',
-          h: '100%',
-          sizing: { type: 'contain', w: '100%', h: '100%' },
-        });
-      }
-
-      const pptxBlob = await pptx.write({ outputType: 'blob' });
-      const url = URL.createObjectURL(pptxBlob as Blob);
-
-      setExports((prev) => ({
-        ...prev,
-        pptx: { status: 'completed', url },
-      }));
-    } catch (error) {
-      console.error('PPTX export error:', error);
-      setExports((prev) => ({
-        ...prev,
-        pptx: {
-          status: 'error',
-          error: error instanceof Error ? error.message : 'PPTX生成に失敗しました',
-        },
-      }));
-    }
-  };
-
-  const handleDownload = (type: 'pdf' | 'pptx') => {
-    const url = exports[type].url;
+  const handleDownloadPdf = () => {
+    const url = exports.pdf.url;
     if (url && projectMeta) {
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${projectMeta.name}_corrected.${type}`;
+      link.download = `${projectMeta.name}_corrected.pdf`;
       link.click();
     }
   };
@@ -241,19 +177,7 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
             status={exports.pdf.status}
             error={exports.pdf.error}
             onExport={handleExportPdf}
-            onDownload={() => handleDownload('pdf')}
-            disabled={pages.length === 0}
-          />
-
-          {/* PPTX Export */}
-          <ExportOption
-            icon={Presentation}
-            title="PPTX"
-            description="各ページを1スライドとして出力"
-            status={exports.pptx.status}
-            error={exports.pptx.error}
-            onExport={handleExportPptx}
-            onDownload={() => handleDownload('pptx')}
+            onDownload={handleDownloadPdf}
             disabled={pages.length === 0}
           />
         </div>
