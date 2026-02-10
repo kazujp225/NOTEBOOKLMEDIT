@@ -704,7 +704,7 @@ export function FixQueuePanel({
                   <textarea
                     value={customText}
                     onChange={(e) => setCustomText(e.target.value)}
-                    placeholder={"テキスト置換:\n  正しいテキストをそのまま入力\n\nAI編集:\n  例: フォントを大きくして\n  例: 背景を白に変えて\n  例: この文字を消して"}
+                    placeholder={"例: フォントを大きくして\n例: 背景を白に変えて\n例: この文字を消して\n例: 「正しいテキスト」に修正して"}
                     className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white resize-none"
                     rows={3}
                     onKeyDown={(e) => {
@@ -716,70 +716,10 @@ export function FixQueuePanel({
                   <p className="text-xs text-gray-400 mt-1">⌘+Enter で適用</p>
                 </div>
 
-                {/* Method toggle */}
-                <div>
-                  <label className="text-xs font-medium text-gray-500 mb-2 block">適用方法</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => setCorrectionMethod('text_overlay')}
-                      className={cn(
-                        'flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg border transition-colors',
-                        correctionMethod === 'text_overlay'
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                      )}
-                    >
-                      <Type className="w-4 h-4" />
-                      テキスト置換
-                    </button>
-                    <button
-                      onClick={() => setCorrectionMethod('ai_inpaint')}
-                      className={cn(
-                        'flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg border transition-colors',
-                        correctionMethod === 'ai_inpaint'
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                      )}
-                    >
-                      <Edit3 className="w-4 h-4" />
-                      AI編集
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1.5">
-                    {correctionMethod === 'text_overlay'
-                      ? '入力したテキストでそのまま置換します（無料）'
-                      : 'AIが指示に従って画像を編集します（10クレジット）'}
-                  </p>
-                </div>
-
-                {/* Candidates */}
-                {candidates.length > 0 && correctionMethod === 'text_overlay' && (
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 mb-2 block">候補から選択</label>
-                    <div className="space-y-1.5">
-                      {candidates.map((candidate, index) => (
-                        <button
-                          key={index}
-                          onClick={() => {
-                            setSelectedCandidateIndex(index);
-                            setCustomText(candidate.text);
-                          }}
-                          className={cn(
-                            'w-full text-left p-2.5 rounded-md border transition-colors text-sm',
-                            customText === candidate.text
-                              ? 'border-blue-500 bg-blue-50'
-                              : 'border-gray-200 hover:bg-gray-50'
-                          )}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium text-gray-900 truncate">{candidate.text}</span>
-                            <ConfidenceBadge confidence={candidate.confidence} />
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                {/* AI edit info */}
+                <p className="text-xs text-gray-400">
+                  AIが指示に従って画像を編集します（10クレジット）
+                </p>
               </>
             )}
           </div>
@@ -965,47 +905,6 @@ export function FixQueuePanel({
         {/* AI Tab */}
         {activeTab === 'ai' && (
           <div className="p-4 space-y-4">
-            {/* Method Selection */}
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-2 block">修正方法</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setCorrectionMethod('text_overlay')}
-                  className={cn(
-                    'relative flex flex-col items-center gap-2 p-4 rounded-lg border transition-colors',
-                    correctionMethod === 'text_overlay'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:bg-gray-50'
-                  )}
-                >
-                  <Type className={cn('w-6 h-6', correctionMethod === 'text_overlay' ? 'text-blue-600' : 'text-gray-400')} />
-                  <span className={cn('text-sm font-medium', correctionMethod === 'text_overlay' ? 'text-blue-700' : 'text-gray-600')}>
-                    テキスト合成
-                  </span>
-                  <span className="text-xs text-gray-400">無料</span>
-                </button>
-
-                <button
-                  onClick={() => setCorrectionMethod('ai_inpaint')}
-                  className={cn(
-                    'relative flex flex-col items-center gap-2 p-4 rounded-lg border transition-colors',
-                    correctionMethod === 'ai_inpaint'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:bg-gray-50'
-                  )}
-                >
-                  <Edit3 className={cn('w-6 h-6', correctionMethod === 'ai_inpaint' ? 'text-blue-600' : 'text-gray-400')} />
-                  <span className={cn('text-sm font-medium', correctionMethod === 'ai_inpaint' ? 'text-blue-700' : 'text-gray-600')}>
-                    AI修正
-                  </span>
-                  <span className="text-xs text-gray-400">10クレジット</span>
-                </button>
-              </div>
-            </div>
-
-            {/* AI Settings */}
-            {correctionMethod === 'ai_inpaint' && (
-              <>
                 {/* Output Size */}
                 <div>
                   <label className="text-xs font-medium text-gray-500 mb-2 block">出力品質</label>
@@ -1071,8 +970,6 @@ export function FixQueuePanel({
                     className="hidden"
                   />
                 </div>
-              </>
-            )}
 
             {/* AI Tips */}
             <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">

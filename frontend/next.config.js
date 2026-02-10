@@ -29,6 +29,7 @@ const nextConfig = {
         net: false,
         tls: false,
         child_process: false,
+        'node-fetch': false,
       };
 
       // Handle node: protocol scheme

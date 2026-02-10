@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, File, X, Loader2, Check, FileUp, Image, Presentation } from 'lucide-react';
+import { Upload, File, X, Loader2, Check, FileUp, Image } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore, generateId } from '@/lib/store';
 
@@ -23,8 +23,7 @@ const ACCEPTED_TYPES = {
 
 function getFileType(file: File): 'pdf' | 'pptx' | 'image' | 'unknown' {
   if (file.type === 'application/pdf') return 'pdf';
-  if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
-      file.name.endsWith('.pptx')) return 'pptx';
+  if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || file.name.endsWith('.pptx')) return 'pptx';
   if (file.type.startsWith('image/')) return 'image';
   return 'unknown';
 }
@@ -33,7 +32,7 @@ function getFileIcon(file: File) {
   const type = getFileType(file);
   switch (type) {
     case 'pdf': return <File className="w-5 h-5 text-red-500" />;
-    case 'pptx': return <Presentation className="w-5 h-5 text-orange-500" />;
+    case 'pptx': return <File className="w-5 h-5 text-orange-500" />;
     case 'image': return <Image className="w-5 h-5 text-blue-500" />;
     default: return <File className="w-5 h-5 text-gray-500" />;
   }
