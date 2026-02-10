@@ -70,6 +70,12 @@ tmp/
 temp/
 *.tmp
 
+# Serena
+.serena/
+
+# TypeScript build info
+tsconfig.tsbuildinfo
+
 # Python virtual environment
 .venv/
 venv/
