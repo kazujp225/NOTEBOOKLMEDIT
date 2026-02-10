@@ -69,10 +69,18 @@ interface MaskArea {
   height: number; // 選択範囲の高さ（0-1の比率）
 }
 
-// Initialize Supabase client with service role for server-side operations
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bvwsxraghycywnenkzsb.supabase.co';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+// Lazy-initialize Supabase client (avoid build-time error when env vars are missing)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _supabase: any = null;
+function getSupabase() {
+  if (!_supabase) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    if (!url || !key) throw new Error('Supabase環境変数が設定されていません');
+    _supabase = createClient(url, key);
+  }
+  return _supabase;
+}
 
 // Get Gemini API key from environment
 function getApiKey(): string {
@@ -91,7 +99,7 @@ async function verifyAuth(request: NextRequest): Promise<string | null> {
   }
 
   const token = authHeader.substring(7);
-  const { data: { user }, error } = await supabase.auth.getUser(token);
+  const { data: { user }, error } = await getSupabase().auth.getUser(token);
 
   if (error || !user) {
     return null;
@@ -107,7 +115,7 @@ async function deductCredits(
   amount: number,
   description: string
 ): Promise<{ success: boolean; error?: string; balance?: number }> {
-  const { data, error } = await supabase.rpc('deduct_credits', {
+  const { data, error } = await getSupabase().rpc('deduct_credits', {
     p_user_id: userId,
     p_request_id: requestId,
     p_amount: amount,
@@ -133,7 +141,7 @@ async function refundCredits(
   amount: number,
   description: string
 ): Promise<void> {
-  const { error } = await supabase.rpc('refund_credits', {
+  const { error } = await getSupabase().rpc('refund_credits', {
     p_user_id: userId,
     p_request_id: requestId,
     p_amount: amount,
@@ -155,7 +163,7 @@ async function recordRequest(
   errorMessage?: string
 ): Promise<void> {
   // Check if request already exists
-  const { data: existing } = await supabase
+  const { data: existing } = await getSupabase()
     .from('generation_requests')
     .select('id, status')
     .eq('request_id', requestId)
@@ -163,7 +171,7 @@ async function recordRequest(
 
   if (existing) {
     // Update existing request
-    await supabase
+    await getSupabase()
       .from('generation_requests')
       .update({
         status,
@@ -173,7 +181,7 @@ async function recordRequest(
       .eq('request_id', requestId);
   } else {
     // Insert new request
-    await supabase.from('generation_requests').insert({
+    await getSupabase().from('generation_requests').insert({
       request_id: requestId,
       user_id: userId,
       request_type: requestType,
@@ -190,7 +198,7 @@ async function getExistingResult(requestId: string): Promise<{
   status?: string;
   result?: unknown;
 }> {
-  const { data } = await supabase
+  const { data } = await getSupabase()
     .from('generation_requests')
     .select('status, metadata')
     .eq('request_id', requestId)
@@ -283,7 +291,7 @@ export async function POST(request: NextRequest) {
         await recordRequest(request_id, userId, 'text_generation', cost, 'completed');
 
         // Save result for idempotency
-        await supabase
+        await getSupabase()
           .from('generation_requests')
           .update({ metadata: { result } })
           .eq('request_id', request_id);
@@ -363,7 +371,7 @@ export async function POST(request: NextRequest) {
           );
 
           // Return balance after refund
-          const { data: credits } = await supabase
+          const { data: credits } = await getSupabase()
             .from('user_credits')
             .select('balance')
             .eq('user_id', userId)
@@ -427,7 +435,7 @@ export async function POST(request: NextRequest) {
         const result = await ocrRegion(params);
 
         await recordRequest(request_id, userId, 'text_generation', cost, 'completed');
-        await supabase
+        await getSupabase()
           .from('generation_requests')
           .update({ metadata: { result } })
           .eq('request_id', request_id);
@@ -472,7 +480,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user credits using the function
-    const { data, error } = await supabase.rpc('get_user_credits', {
+    const { data, error } = await getSupabase().rpc('get_user_credits', {
       p_user_id: userId,
     });
 
