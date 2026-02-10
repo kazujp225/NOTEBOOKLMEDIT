@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@kandiforge/pptx-renderer": "^3.3.0",
     "@supabase/supabase-js": "^2.94.1",
     "clsx": "^2.1.0",
     "framer-motion": "^10.18.0",

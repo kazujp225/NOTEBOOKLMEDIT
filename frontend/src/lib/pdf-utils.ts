@@ -140,132 +140,324 @@ export async function processPptx(
   file: File,
   onProgress?: (current: number, total: number) => void
 ): Promise<ProcessedPage[]> {
-  // PPTXはZIPファイルなので、JSZipで展開してスライド画像を抽出
-  const JSZip = (await import('jszip')).default;
+  // @kandiforge/pptx-renderer のパーサーのみ使用（レンダラーはcross-fetch依存があるため自前描画）
+  const { parsePPTX } = await import('@kandiforge/pptx-renderer/dist/lib/parser.js');
+  
   const arrayBuffer = await file.arrayBuffer();
-  const zip = await JSZip.loadAsync(arrayBuffer);
-
-  // スライド画像を探す（ppt/media/ 内の画像ファイル）
-  // まずスライドのリレーションからスライド数を特定
-  const slideFiles: string[] = [];
-  zip.forEach((relativePath) => {
-    if (relativePath.match(/^ppt\/slides\/slide\d+\.xml$/)) {
-      slideFiles.push(relativePath);
-    }
-  });
-
-  // スライド番号順にソート
-  slideFiles.sort((a, b) => {
-    const numA = parseInt(a.match(/slide(\d+)/)?.[1] || '0');
-    const numB = parseInt(b.match(/slide(\d+)/)?.[1] || '0');
-    return numA - numB;
-  });
-
-  if (slideFiles.length === 0) {
+  const pptxData = await parsePPTX(arrayBuffer);
+  
+  if (pptxData.slides.length === 0) {
     throw new Error('PPTXファイルにスライドが見つかりませんでした');
   }
 
-  const totalSlides = slideFiles.length;
+  const totalSlides = pptxData.slides.length;
   const pages: ProcessedPage[] = [];
 
-  // スライドごとに関連画像を取得
+  // スライドサイズ（PPTXのEMU単位からピクセルへ、デフォルト16:9）
+  const slideW = pptxData.size?.width || 960;
+  const slideH = pptxData.size?.height || 540;
+
+  // レンダリング解像度
+  const scale = 2;
+  const canvasWidth = Math.round(slideW * scale);
+  const canvasHeight = Math.round(slideH * scale);
+
   for (let i = 0; i < totalSlides; i++) {
     onProgress?.(i + 1, totalSlides);
+    const slide = pptxData.slides[i];
 
-    const slideNum = i + 1;
-    const relPath = `ppt/slides/_rels/slide${slideNum}.xml.rels`;
-    const relFile = zip.file(relPath);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext('2d')!;
 
-    let slideImageDataUrl: string | null = null;
+    // 背景描画
+    renderBackground(ctx, slide.background, canvasWidth, canvasHeight);
 
-    if (relFile) {
-      const relXml = await relFile.async('string');
+    // 全シェイプを統合して描画（master → layout → slide の順）
+    const allShapes = [
+      ...(slide.masterShapes || []),
+      ...(slide.layoutShapes || []),
+      ...(slide.slideShapes || slide.shapes || []),
+    ];
 
-      // リレーションから画像ファイルパスを抽出
-      const imageMatches = relXml.match(/Target="([^"]*\.(png|jpg|jpeg|gif|bmp|emf|wmf))"/gi);
-      if (imageMatches) {
-        for (const match of imageMatches) {
-          const targetMatch = match.match(/Target="([^"]*)"/);
-          if (!targetMatch) continue;
-
-          let imagePath = targetMatch[1];
-          // 相対パスを解決
-          if (imagePath.startsWith('../')) {
-            imagePath = 'ppt/' + imagePath.replace('../', '');
-          } else if (!imagePath.startsWith('ppt/')) {
-            imagePath = 'ppt/slides/' + imagePath;
-          }
-
-          const imageFile = zip.file(imagePath);
-          if (imageFile) {
-            const blob = await imageFile.async('blob');
-            const mimeType = imagePath.match(/\.png$/i) ? 'image/png' :
-                             imagePath.match(/\.(jpg|jpeg)$/i) ? 'image/jpeg' :
-                             'image/png';
-            const blobWithType = new Blob([blob], { type: mimeType });
-            slideImageDataUrl = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result as string);
-              reader.onerror = () => reject(reader.error);
-              reader.readAsDataURL(blobWithType);
-            });
-            break; // 最初の画像を使用
-          }
-        }
-      }
+    for (const shape of allShapes) {
+      await renderShape(ctx, shape, scale);
     }
 
-    // 画像が見つからない場合はプレースホルダーを作成
-    if (!slideImageDataUrl) {
-      const canvas = document.createElement('canvas');
-      canvas.width = 1920;
-      canvas.height = 1080;
-      const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, 1920, 1080);
-      ctx.fillStyle = '#999999';
-      ctx.font = '32px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`スライド ${slideNum}`, 960, 540);
-      slideImageDataUrl = canvas.toDataURL('image/png');
-    }
-
-    // 画像の寸法を取得
-    const { width, height } = await new Promise<{ width: number; height: number }>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-      img.onerror = () => reject(new Error('スライド画像の読み込みに失敗しました'));
-      img.src = slideImageDataUrl!;
-    });
+    const imageDataUrl = canvas.toDataURL('image/png');
 
     // サムネイル生成
     const thumbWidth = 150;
-    const thumbScale = thumbWidth / width;
-    const thumbHeight = height * thumbScale;
+    const thumbScale = thumbWidth / canvasWidth;
+    const thumbHeight = Math.round(canvasHeight * thumbScale);
     const thumbCanvas = document.createElement('canvas');
-    const thumbCtx = thumbCanvas.getContext('2d')!;
     thumbCanvas.width = thumbWidth;
     thumbCanvas.height = thumbHeight;
-
-    const img = new Image();
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject();
-      img.src = slideImageDataUrl!;
-    });
-    thumbCtx.drawImage(img, 0, 0, thumbWidth, thumbHeight);
+    const thumbCtx = thumbCanvas.getContext('2d')!;
+    thumbCtx.drawImage(canvas, 0, 0, thumbWidth, thumbHeight);
     const thumbnailDataUrl = thumbCanvas.toDataURL('image/jpeg', 0.7);
 
     pages.push({
-      pageNumber: slideNum,
-      imageDataUrl: slideImageDataUrl,
+      pageNumber: i + 1,
+      imageDataUrl,
       thumbnailDataUrl,
-      width,
-      height,
+      width: canvasWidth,
+      height: canvasHeight,
     });
   }
 
   return pages;
+}
+
+// --- PPTX自前レンダリング用ヘルパー ---
+
+function colorToCSS(color: any): string {
+  if (!color) return 'transparent';
+  if (typeof color === 'string') return color;
+  if (color.r !== undefined) {
+    const a = color.a !== undefined ? color.a : 1;
+    return `rgba(${color.r}, ${color.g}, ${color.b}, ${a})`;
+  }
+  return 'transparent';
+}
+
+function renderBackground(ctx: CanvasRenderingContext2D, bg: any, w: number, h: number) {
+  if (!bg) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    return;
+  }
+  if (typeof bg === 'string' || (bg && bg.r !== undefined)) {
+    ctx.fillStyle = colorToCSS(bg);
+    ctx.fillRect(0, 0, w, h);
+    return;
+  }
+  // グラデーション
+  if (bg.type === 'linear' && bg.stops?.length >= 2) {
+    const angle = (bg.angle || 0) * Math.PI / 180;
+    const grad = ctx.createLinearGradient(0, 0, w * Math.cos(angle), h * Math.sin(angle));
+    for (const stop of bg.stops) {
+      grad.addColorStop(stop.position, stop.color || '#ffffff');
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    return;
+  }
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+}
+
+async function renderShape(ctx: CanvasRenderingContext2D, shape: any, scale: number) {
+  if (!shape) return;
+  const x = (shape.position?.x || 0) * scale;
+  const y = (shape.position?.y || 0) * scale;
+  const w = (shape.size?.width || 0) * scale;
+  const h = (shape.size?.height || 0) * scale;
+
+  ctx.save();
+
+  // 回転
+  if (shape.rotation) {
+    ctx.translate(x + w / 2, y + h / 2);
+    ctx.rotate((shape.rotation * Math.PI) / 180);
+    ctx.translate(-(x + w / 2), -(y + h / 2));
+  }
+
+  // グループは子要素を再帰的に描画
+  if (shape.type === 'group' && shape.children) {
+    for (const child of shape.children) {
+      await renderShape(ctx, child, scale);
+    }
+    ctx.restore();
+    return;
+  }
+
+  // 画像
+  if (shape.type === 'image' && shape.imageUrl) {
+    try {
+      const img = await loadImage(shape.imageUrl);
+      ctx.drawImage(img, x, y, w, h);
+    } catch {
+      // 画像読み込み失敗時はプレースホルダー
+      ctx.fillStyle = '#f0f0f0';
+      ctx.fillRect(x, y, w, h);
+    }
+    ctx.restore();
+    return;
+  }
+
+  // 塗り
+  if (shape.fill) {
+    const fillColor = colorToCSS(shape.fill);
+    if (fillColor !== 'transparent') {
+      ctx.fillStyle = fillColor;
+      if (shape.type === 'circle') {
+        ctx.beginPath();
+        ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillRect(x, y, w, h);
+      }
+    }
+  }
+
+  // 枠線
+  if (shape.stroke && shape.strokeWidth) {
+    ctx.strokeStyle = colorToCSS(shape.stroke);
+    ctx.lineWidth = (shape.strokeWidth || 1) * scale;
+    if (shape.type === 'circle') {
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (shape.type === 'line') {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + w, y + h);
+      ctx.stroke();
+    } else {
+      ctx.strokeRect(x, y, w, h);
+    }
+  }
+
+  // テキスト描画
+  if (shape.paragraphs?.length) {
+    renderParagraphs(ctx, shape.paragraphs, x, y, w, h, scale, shape.textStyle);
+  } else if (shape.text) {
+    renderSimpleText(ctx, shape.text, x, y, w, h, scale, shape.textStyle);
+  }
+
+  // テーブル
+  if (shape.type === 'table' && shape.table) {
+    renderTable(ctx, shape.table, x, y, scale);
+  }
+
+  ctx.restore();
+}
+
+function renderSimpleText(
+  ctx: CanvasRenderingContext2D, text: string,
+  x: number, y: number, w: number, h: number,
+  scale: number, style?: any
+) {
+  const fontSize = ((style?.fontSize || 12) * scale);
+  const fontFamily = style?.fontFamily || 'sans-serif';
+  const fontWeight = style?.fontWeight || 'normal';
+  ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+  ctx.fillStyle = style?.color ? colorToCSS(style.color) : '#000000';
+  ctx.textBaseline = 'top';
+
+  const align = style?.align || 'left';
+  ctx.textAlign = align as CanvasTextAlign;
+  const textX = align === 'center' ? x + w / 2 : align === 'right' ? x + w : x + 4 * scale;
+
+  // ワードラップ
+  const lines = wrapText(ctx, text, w - 8 * scale);
+  const lineHeight = fontSize * 1.3;
+  const vAnchor = style?.verticalAnchor || 'top';
+  let startY = y + 4 * scale;
+  if (vAnchor === 'middle') startY = y + (h - lines.length * lineHeight) / 2;
+  else if (vAnchor === 'bottom') startY = y + h - lines.length * lineHeight - 4 * scale;
+
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], textX, startY + i * lineHeight);
+  }
+}
+
+function renderParagraphs(
+  ctx: CanvasRenderingContext2D, paragraphs: any[],
+  x: number, y: number, w: number, h: number,
+  scale: number, defaultStyle?: any
+) {
+  let curY = y + 4 * scale;
+  const maxY = y + h;
+
+  for (const para of paragraphs) {
+    if (curY >= maxY) break;
+    const align = para.align || defaultStyle?.align || 'left';
+
+    for (const run of (para.runs || [])) {
+      if (curY >= maxY) break;
+      const fontSize = ((run.fontSize || defaultStyle?.fontSize || 12) * scale);
+      const fontFamily = run.fontFamily || defaultStyle?.fontFamily || 'sans-serif';
+      const bold = run.bold ? 'bold' : 'normal';
+      const italic = run.italic ? 'italic' : '';
+      ctx.font = `${italic} ${bold} ${fontSize}px ${fontFamily}`.trim();
+      ctx.fillStyle = run.color ? colorToCSS(run.color) : (defaultStyle?.color ? colorToCSS(defaultStyle.color) : '#000000');
+      ctx.textBaseline = 'top';
+      ctx.textAlign = align as CanvasTextAlign;
+
+      const textX = align === 'center' ? x + w / 2 : align === 'right' ? x + w : x + 4 * scale;
+      const lines = wrapText(ctx, run.text || '', w - 8 * scale);
+      const lineHeight = fontSize * 1.3;
+
+      for (const line of lines) {
+        if (curY >= maxY) break;
+        ctx.fillText(line, textX, curY);
+        curY += lineHeight;
+      }
+    }
+    curY += 4 * scale; // paragraph spacing
+  }
+}
+
+function renderTable(ctx: CanvasRenderingContext2D, table: any, offsetX: number, offsetY: number, scale: number) {
+  let curY = offsetY;
+  for (const row of (table.rows || [])) {
+    const rowH = (row.height || 30) * scale;
+    let curX = offsetX;
+    for (let c = 0; c < (row.cells || []).length; c++) {
+      const cell = row.cells[c];
+      const colW = ((table.columnWidths?.[c] || 100) * scale);
+
+      if (cell.fill) {
+        ctx.fillStyle = colorToCSS(cell.fill);
+        ctx.fillRect(curX, curY, colW, rowH);
+      }
+      ctx.strokeStyle = '#cccccc';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(curX, curY, colW, rowH);
+
+      if (cell.paragraphs?.length) {
+        renderParagraphs(ctx, cell.paragraphs, curX, curY, colW, rowH, scale, cell.textStyle);
+      } else if (cell.text) {
+        renderSimpleText(ctx, cell.text, curX, curY, colW, rowH, scale, cell.textStyle);
+      }
+      curX += colW;
+    }
+    curY += rowH;
+  }
+}
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  if (maxWidth <= 0) return [text];
+  const lines: string[] = [];
+  for (const rawLine of text.split('\n')) {
+    const words = rawLine.split('');
+    let line = '';
+    for (const ch of words) {
+      const test = line + ch;
+      if (ctx.measureText(test).width > maxWidth && line.length > 0) {
+        lines.push(line);
+        line = ch;
+      } else {
+        line = test;
+      }
+    }
+    if (line) lines.push(line);
+    if (rawLine === '') lines.push('');
+  }
+  return lines.length > 0 ? lines : [''];
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Image load failed'));
+    img.src = src;
+  });
 }
 
 /**
