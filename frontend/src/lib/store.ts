@@ -153,26 +153,30 @@ export const useAppStore = create<AppState>()(
         const project = get().getProject(id);
         if (!project) return null;
 
-        // Load images from IndexedDB
-        const pagesWithImages: PageData[] = [];
-        for (const pageMeta of project.pages) {
-          const imageDataUrl = await getImage(pageMeta.imageKey);
-          const thumbnailDataUrl = await getImage(pageMeta.thumbnailKey);
+        // Load all pages in parallel using stable base64 data URLs
+        const pagesWithImages = await Promise.all(
+          project.pages.map(async (pageMeta): Promise<PageData | null> => {
+            const [imageDataUrl, thumbnailDataUrl] = await Promise.all([
+              getImage(pageMeta.imageKey),
+              getImage(pageMeta.thumbnailKey),
+            ]);
 
-          if (imageDataUrl && thumbnailDataUrl) {
-            pagesWithImages.push({
-              pageNumber: pageMeta.pageNumber,
-              width: pageMeta.width,
-              height: pageMeta.height,
-              imageDataUrl,
-              thumbnailDataUrl,
-            });
-          }
-        }
+            if (imageDataUrl && thumbnailDataUrl) {
+              return {
+                pageNumber: pageMeta.pageNumber,
+                width: pageMeta.width,
+                height: pageMeta.height,
+                imageDataUrl,
+                thumbnailDataUrl,
+              };
+            }
+            return null;
+          })
+        );
 
         return {
           ...project,
-          pages: pagesWithImages,
+          pages: pagesWithImages.filter((p): p is PageData => p !== null),
         };
       },
 

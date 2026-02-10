@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, File, X, Loader2, Check, FileUp } from 'lucide-react';
+import { Upload, File, X, Loader2, Check, FileUp, Image, Presentation } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore, generateId } from '@/lib/store';
 
@@ -12,8 +12,45 @@ interface UploaderProps {
 
 type UploadState = 'idle' | 'selected' | 'processing' | 'complete' | 'error';
 
+// 対応ファイル形式
+const ACCEPTED_TYPES = {
+  'application/pdf': ['.pdf'],
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/webp': ['.webp'],
+};
+
+function getFileType(file: File): 'pdf' | 'pptx' | 'image' | 'unknown' {
+  if (file.type === 'application/pdf') return 'pdf';
+  if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+      file.name.endsWith('.pptx')) return 'pptx';
+  if (file.type.startsWith('image/')) return 'image';
+  return 'unknown';
+}
+
+function getFileIcon(file: File) {
+  const type = getFileType(file);
+  switch (type) {
+    case 'pdf': return <File className="w-5 h-5 text-red-500" />;
+    case 'pptx': return <Presentation className="w-5 h-5 text-orange-500" />;
+    case 'image': return <Image className="w-5 h-5 text-blue-500" />;
+    default: return <File className="w-5 h-5 text-gray-500" />;
+  }
+}
+
+function getFileIconBg(file: File) {
+  const type = getFileType(file);
+  switch (type) {
+    case 'pdf': return 'bg-red-50';
+    case 'pptx': return 'bg-orange-50';
+    case 'image': return 'bg-blue-50';
+    default: return 'bg-gray-50';
+  }
+}
+
 export function Uploader({ onUploadComplete }: UploaderProps) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [uploadState, setUploadState] = useState<UploadState>('idle');
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
@@ -21,9 +58,13 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
   const addProject = useAppStore((state) => state.addProject);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    const pdfFile = acceptedFiles.find((f) => f.type === 'application/pdf');
-    if (pdfFile) {
-      setFile(pdfFile);
+    const validFiles = acceptedFiles.filter((f) => {
+      const type = getFileType(f);
+      return type !== 'unknown';
+    });
+
+    if (validFiles.length > 0) {
+      setFiles(validFiles);
       setUploadState('selected');
       setError(null);
     }
@@ -31,36 +72,59 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      'application/pdf': ['.pdf'],
-    },
-    maxFiles: 1,
+    accept: ACCEPTED_TYPES,
+    maxFiles: 20, // 画像の場合は複数ファイル対応
     disabled: uploadState === 'processing',
   });
 
   const handleUpload = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
 
     setUploadState('processing');
     setProgress({ current: 0, total: 0 });
 
     try {
-      // Dynamic import to avoid SSR issues with PDF.js
-      const { processPdf } = await import('@/lib/pdf-utils');
+      const firstFile = files[0];
+      const fileType = getFileType(firstFile);
 
-      // Process PDF in browser using PDF.js
-      const pages = await processPdf(file, (current, total) => {
-        setProgress({ current, total });
-      });
+      let pages;
+      let projectName: string;
 
-      // Create project in local store (images saved to IndexedDB)
+      if (fileType === 'pdf') {
+        const { processPdf } = await import('@/lib/pdf-utils');
+        pages = await processPdf(firstFile, (current, total) => {
+          setProgress({ current, total });
+        });
+        projectName = firstFile.name.replace(/\.pdf$/i, '');
+
+      } else if (fileType === 'pptx') {
+        const { processPptx } = await import('@/lib/pdf-utils');
+        pages = await processPptx(firstFile, (current, total) => {
+          setProgress({ current, total });
+        });
+        projectName = firstFile.name.replace(/\.pptx$/i, '');
+
+      } else if (fileType === 'image') {
+        const { processImages } = await import('@/lib/pdf-utils');
+        pages = await processImages(files, (current, total) => {
+          setProgress({ current, total });
+        });
+        projectName = files.length === 1
+          ? firstFile.name.replace(/\.[^.]+$/, '')
+          : `画像 ${files.length}枚`;
+
+      } else {
+        throw new Error('対応していないファイル形式です');
+      }
+
+      // プロジェクト作成
       const projectId = generateId();
       const now = new Date().toISOString();
 
       await addProject({
         id: projectId,
-        name: file.name.replace(/\.pdf$/i, ''),
-        fileName: file.name,
+        name: projectName,
+        fileName: firstFile.name,
         totalPages: pages.length,
         pages: pages.map((page) => ({
           pageNumber: page.pageNumber,
@@ -77,19 +141,18 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
 
       setUploadState('complete');
 
-      // Navigate to editor after brief delay
       setTimeout(() => {
         onUploadComplete(projectId);
       }, 800);
     } catch (err) {
-      console.error('PDF processing error:', err);
-      setError(err instanceof Error ? err.message : 'PDF処理に失敗しました');
+      console.error('File processing error:', err);
+      setError(err instanceof Error ? err.message : 'ファイル処理に失敗しました');
       setUploadState('error');
     }
   };
 
   const handleCancel = () => {
-    setFile(null);
+    setFiles([]);
     setUploadState('idle');
     setProgress({ current: 0, total: 0 });
     setError(null);
@@ -98,6 +161,12 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
   const progressPercent = progress.total > 0
     ? Math.round((progress.current / progress.total) * 100)
     : 0;
+
+  const displayFile = files[0];
+  const displayName = files.length === 1
+    ? displayFile?.name
+    : `${files.length}個のファイル`;
+  const displaySize = files.reduce((sum, f) => sum + f.size, 0);
 
   return (
     <div className="w-full max-w-3xl mx-auto">
@@ -127,28 +196,28 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
 
             {/* Text */}
             <p className="text-base font-medium text-gray-900 mb-1">
-              {isDragActive ? 'ここにドロップ' : 'PDFファイルをドラッグ＆ドロップ'}
+              {isDragActive ? 'ここにドロップ' : 'ファイルをドラッグ＆ドロップ'}
             </p>
             <p className="text-sm text-gray-500">
               または <span className="text-blue-600 font-medium hover:underline">ファイルを選択</span>
             </p>
             <p className="text-xs text-gray-400 mt-4">
-              PDF / 最大100ページ
+              PDF / PPTX / JPG / PNG / WebP
             </p>
           </div>
         </div>
       )}
 
-      {(uploadState === 'selected' || uploadState === 'error') && file && (
+      {(uploadState === 'selected' || uploadState === 'error') && displayFile && (
         <div className="bg-white rounded-2xl ring-1 ring-gray-200 overflow-hidden">
           <div className="px-6 py-5 flex items-center gap-4">
-            <div className="w-11 h-11 bg-red-50 rounded-lg flex items-center justify-center flex-shrink-0">
-              <File className="w-5 h-5 text-red-500" />
+            <div className={cn('w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0', getFileIconBg(displayFile))}>
+              {getFileIcon(displayFile)}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
+              <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
               <p className="text-xs text-gray-500">
-                {(file.size / 1024 / 1024).toFixed(1)} MB
+                {(displaySize / 1024 / 1024).toFixed(1)} MB
               </p>
             </div>
             <button
@@ -192,7 +261,7 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
           </div>
 
           <p className="text-sm font-medium text-gray-900 mb-1">
-            PDFを処理しています
+            ファイルを処理しています
           </p>
           <p className="text-xs text-gray-500 mb-5">
             {progress.total > 0

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X, Trash2, Move, Copy, Type, Shapes } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X, Trash2, Move, Copy, Type, Shapes, Check, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip } from '@/components/ui/Tooltip';
 
@@ -23,6 +23,7 @@ export interface IssueForCanvas {
   detected_problems: string[];
   status: string;
   auto_correctable: boolean;
+  edit_mode?: 'text' | 'object';
 }
 
 interface CanvasViewerProps {
@@ -36,6 +37,7 @@ interface CanvasViewerProps {
   onDeleteIssue?: (issueId: string) => void;
   zoom: number;
   onZoomChange: (zoom: number) => void;
+  disabled?: boolean;
 }
 
 export function CanvasViewer({
@@ -49,6 +51,7 @@ export function CanvasViewer({
   onDeleteIssue,
   zoom,
   onZoomChange,
+  disabled = false,
 }: CanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -145,6 +148,7 @@ export function CanvasViewer({
 
   // Mouse handlers
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (disabled) return;
     if (mode === 'draw' && e.button === 0) {
       e.preventDefault();
       const pos = screenToImage(e.clientX, e.clientY);
@@ -200,7 +204,7 @@ export function CanvasViewer({
     setPanOffset({ x: 0, y: 0 });
   };
 
-  // Get issue box class based on status
+  // Get issue box class based on status and severity
   const getIssueBoxClass = (issue: IssueForCanvas) => {
     const isSelected = issue.id === selectedIssueId;
     if (isSelected) return 'issue-box issue-box-active';
@@ -277,6 +281,10 @@ export function CanvasViewer({
             {imageLoaded &&
               issues.map((issue) => {
                 const isSelected = issue.id === selectedIssueId;
+                const isCorrected = issue.status === 'corrected';
+                const isSkipped = issue.status === 'skipped';
+                const boxScale = effectiveZoom;
+                const badgeSize = Math.max(16, Math.min(24, 20 / zoom));
                 return (
                   <div
                     key={issue.id}
@@ -303,6 +311,37 @@ export function CanvasViewer({
                       }
                     }}
                   >
+                    {/* Status badge - top-right corner */}
+                    {!isSelected && (
+                      <div
+                        className={cn(
+                          'absolute -top-2 -right-2 rounded-full flex items-center justify-center shadow-sm z-10 pointer-events-none',
+                          isCorrected && 'bg-green-500',
+                          isSkipped && 'bg-gray-400',
+                          !isCorrected && !isSkipped && 'bg-amber-500'
+                        )}
+                        style={{ width: badgeSize, height: badgeSize }}
+                      >
+                        {isCorrected ? (
+                          <Check className="text-white" style={{ width: badgeSize * 0.6, height: badgeSize * 0.6 }} />
+                        ) : isSkipped ? (
+                          <X className="text-white" style={{ width: badgeSize * 0.6, height: badgeSize * 0.6 }} />
+                        ) : (
+                          <AlertCircle className="text-white" style={{ width: badgeSize * 0.6, height: badgeSize * 0.6 }} />
+                        )}
+                      </div>
+                    )}
+
+                    {/* Edit mode indicator - top-left corner */}
+                    {!isSelected && issue.edit_mode === 'object' && (
+                      <div
+                        className="absolute -top-2 -left-2 rounded-full bg-purple-500 flex items-center justify-center shadow-sm z-10 pointer-events-none"
+                        style={{ width: badgeSize, height: badgeSize }}
+                      >
+                        <Shapes className="text-white" style={{ width: badgeSize * 0.6, height: badgeSize * 0.6 }} />
+                      </div>
+                    )}
+
                     {/* PowerPoint-style selection handles - 8 points */}
                     {isSelected && (
                       <>
@@ -317,51 +356,29 @@ export function CanvasViewer({
                       </>
                     )}
 
-                    {/* Context toolbar - PowerPoint style floating toolbar */}
-                    {isSelected && (
+                    {/* Context toolbar */}
+                    {isSelected && onDeleteIssue && (
                       <div className="context-toolbar">
-                        <Tooltip content="移動">
+                        <Tooltip content="削除 (Delete)">
                           <button
-                            className="context-toolbar-btn"
-                            aria-label="移動"
-                          >
-                            <Move className="w-4 h-4" />
-                          </button>
-                        </Tooltip>
-                        <Tooltip content="複製">
-                          <button
-                            className="context-toolbar-btn"
                             onClick={(e) => {
                               e.stopPropagation();
-                              // Copy functionality - can be extended
+                              onDeleteIssue(issue.id);
                             }}
-                            aria-label="複製"
+                            className="context-toolbar-btn context-toolbar-btn-danger"
+                            aria-label="削除"
                           >
-                            <Copy className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </Tooltip>
-                        {onDeleteIssue && (
-                          <Tooltip content="削除 (Delete)">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteIssue(issue.id);
-                              }}
-                              className="context-toolbar-btn context-toolbar-btn-danger"
-                              aria-label="削除"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </Tooltip>
-                        )}
                       </div>
                     )}
 
                     {/* Tooltip on hover - only show when not selected */}
                     {!isSelected && (
-                      <div className="absolute -top-7 left-0 px-2 py-1 text-xs font-medium bg-gray-900 text-white rounded shadow-lg opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20">
-                        {issue.ocr_text?.slice(0, 30) || 'Issue'}
-                        {(issue.ocr_text?.length || 0) > 30 && '...'}
+                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 text-xs font-medium bg-gray-900 text-white rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20">
+                        {isCorrected ? '✓ ' : ''}{issue.ocr_text?.slice(0, 30) || (issue.edit_mode === 'object' ? 'オブジェクト' : 'Issue')}
+                        {((issue.ocr_text?.length || 0) > 30) && '...'}
                       </div>
                     )}
                   </div>
@@ -455,7 +472,7 @@ export function CanvasViewer({
             onClick={() => setEditMode('object')}
             className={cn(
               'w-8 h-8 flex items-center justify-center rounded-full transition-colors',
-              editMode === 'object' ? 'bg-purple-500 text-white' : 'hover:bg-gray-100 text-gray-500'
+              editMode === 'object' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 text-gray-500'
             )}
             aria-label="オブジェクト修正"
           >
@@ -506,11 +523,21 @@ export function CanvasViewer({
         </Tooltip>
       </div>
 
+      {/* Disabled overlay during AI processing */}
+      {disabled && (
+        <div className="absolute inset-0 bg-white/50 z-50 flex items-center justify-center pointer-events-auto">
+          <div className="px-5 py-3 bg-white rounded-lg shadow-md border border-gray-200 flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm font-medium text-gray-700">AI処理中...</span>
+          </div>
+        </div>
+      )}
+
       {/* Top mode indicator when drawing */}
-      {mode === 'draw' && (
+      {mode === 'draw' && !disabled && (
         <div className={cn(
           'absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 text-white text-sm font-medium rounded-full shadow-lg flex items-center gap-2',
-          editMode === 'text' ? 'bg-blue-600' : 'bg-purple-600'
+          editMode === 'text' ? 'bg-blue-600' : 'bg-blue-600'
         )}>
           {editMode === 'text' ? <Type className="w-4 h-4" /> : <Shapes className="w-4 h-4" />}
           {editMode === 'text' ? 'テキスト修正: ドラッグして文字を選択' : 'オブジェクト修正: ドラッグして対象を選択'}

@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Uploader } from '@/components/Uploader';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { AuthForm } from '@/components/auth/AuthForm';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { useAppStore } from '@/lib/store';
+import { useAppStore, type Project } from '@/lib/store';
+import { getImage } from '@/lib/image-store';
 import { formatDate } from '@/lib/utils';
 import {
   FileText,
@@ -17,6 +18,37 @@ import {
   LogOut,
   Loader2,
 } from 'lucide-react';
+
+function ProjectThumbnail({ project }: { project: Project }) {
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const firstPage = project.pages[0];
+    if (!firstPage) return;
+
+    getImage(firstPage.imageKey).then((url) => {
+      if (url) setThumbnailUrl(url);
+    }).catch(() => {});
+  }, [project.id, project.pages]);
+
+  if (!thumbnailUrl) {
+    return (
+      <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center">
+        <FileText className="w-8 h-8 text-gray-300" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full aspect-[4/3] bg-gray-100 overflow-hidden">
+      <img
+        src={thumbnailUrl}
+        alt={project.name}
+        className="w-full h-full object-cover object-top"
+      />
+    </div>
+  );
+}
 
 export default function HomePage() {
   const router = useRouter();
@@ -116,46 +148,47 @@ export default function HomePage() {
               {projects.slice(0, 6).map((project) => (
                 <div
                   key={project.id}
-                  className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:border-gray-300 hover:shadow-md transition-all group"
+                  className="bg-white border border-gray-200 rounded-xl overflow-hidden cursor-pointer hover:border-gray-300 hover:shadow-md transition-all group"
                   onClick={() => router.push(`/projects/${project.id}`)}
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-                      <FileText className="w-6 h-6 text-blue-600" />
-                    </div>
+                  {/* Thumbnail */}
+                  <div className="relative">
+                    <ProjectThumbnail project={project} />
                     <button
                       onClick={(e) => handleDeleteProject(project.id, e)}
-                      className="p-2 hover:bg-gray-100 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute top-2 right-2 p-1.5 bg-white/80 backdrop-blur-sm hover:bg-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                     >
-                      <Trash2 className="w-5 h-5 text-gray-400 hover:text-red-500" />
+                      <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
                     </button>
                   </div>
 
-                  <h3 className="font-semibold text-gray-900 truncate mb-2 text-base">
-                    {project.name}
-                  </h3>
+                  {/* Info */}
+                  <div className="p-4">
+                    <h3 className="font-semibold text-gray-900 truncate mb-2 text-sm">
+                      {project.name}
+                    </h3>
 
-                  <div className="flex items-center gap-3 text-sm text-gray-500">
-                    <span>{project.pages.length}ページ</span>
-                    <span>•</span>
-                    <Badge
-                      variant={
-                        project.status === 'completed' ||
-                        project.status === 'ready'
-                          ? 'success'
-                          : project.status === 'processing'
-                          ? 'primary'
-                          : 'default'
-                      }
-                      size="sm"
-                    >
-                      {project.status === 'ready' ? '編集可能' : project.status}
-                    </Badge>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <span>{project.pages.length}ページ</span>
+                        <span>•</span>
+                        <span>{formatDate(project.createdAt)}</span>
+                      </div>
+                      <Badge
+                        variant={
+                          project.status === 'completed' ||
+                          project.status === 'ready'
+                            ? 'success'
+                            : project.status === 'processing'
+                            ? 'primary'
+                            : 'default'
+                        }
+                        size="sm"
+                      >
+                        {project.status === 'ready' ? '編集可能' : project.status}
+                      </Badge>
+                    </div>
                   </div>
-
-                  <p className="text-sm text-gray-400 mt-3">
-                    {formatDate(project.createdAt)}
-                  </p>
                 </div>
               ))}
             </div>
