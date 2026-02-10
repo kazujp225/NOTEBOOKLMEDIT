@@ -11,8 +11,11 @@ const nextConfig = {
   },
   // Webpack config to handle pdfjs-dist
   webpack: (config, { isServer }) => {
-    // Handle canvas for pdfjs-dist
+    // Handle canvas for pdfjs-dist and pptx-renderer
     config.resolve.alias.canvas = false;
+    config.resolve.alias['cross-fetch'] = false;
+    config.resolve.alias['canvg'] = false;
+    config.resolve.alias['@xmldom/xmldom'] = false;
 
     // Exclude node: protocol modules from client bundle
     if (!isServer) {
@@ -29,6 +32,7 @@ const nextConfig = {
         net: false,
         tls: false,
         child_process: false,
+        buffer: false,
         'node-fetch': false,
       };
 
