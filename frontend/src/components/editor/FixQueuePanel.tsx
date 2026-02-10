@@ -56,6 +56,7 @@ import {
   Square,
   Minus,
   Plus,
+  Shapes,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { analyzeDesign, type DesignDefinition } from '@/lib/gemini';
@@ -78,6 +79,7 @@ export interface IssueForFixQueue {
   status: string;
   auto_correctable: boolean;
   candidates?: Candidate[];
+  edit_mode?: 'text' | 'object';
 }
 
 export interface AIInpaintOptions {
@@ -262,8 +264,11 @@ export function FixQueuePanel({
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedCandidateIndex, setSelectedCandidateIndex] = useState<number | null>(null);
   const [customText, setCustomText] = useState('');
-  const [correctionMethod, setCorrectionMethod] = useState<'text_overlay' | 'ai_inpaint'>('text_overlay');
+  const [objectPrompt, setObjectPrompt] = useState('');
+  const [correctionMethod, setCorrectionMethod] = useState<'text_overlay' | 'ai_inpaint'>('ai_inpaint');
   const [activeTab, setActiveTab] = useState<'edit' | 'style' | 'ai'>('edit');
+
+  const isObjectMode = currentIssue?.edit_mode === 'object';
 
   // Text styling
   const [textStyle, setTextStyle] = useState<TextStyle>({
@@ -282,6 +287,7 @@ export function FixQueuePanel({
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
   const [referenceDesign, setReferenceDesign] = useState<DesignDefinition | null>(null);
   const [isAnalyzingDesign, setIsAnalyzingDesign] = useState(false);
+  const [fontAccordionOpen, setFontAccordionOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Progress calculations
@@ -290,6 +296,14 @@ export function FixQueuePanel({
   ).length;
   const totalCount = issues.length;
   const progressPercent = totalCount > 0 ? (resolvedCount / totalCount) * 100 : 0;
+
+  // Reset state when issue changes
+  useEffect(() => {
+    setObjectPrompt('');
+    if (!currentIssue || currentIssue.edit_mode !== 'object') {
+      setActiveTab('edit');
+    }
+  }, [currentIssue?.id]);
 
   // Load candidates and set initial text when issue changes
   useEffect(() => {
@@ -348,6 +362,21 @@ export function FixQueuePanel({
 
   const handleApply = async () => {
     if (!currentIssue) return;
+
+    if (isObjectMode) {
+      const prompt = objectPrompt.trim();
+      if (!prompt) return;
+
+      const aiOptions: AIInpaintOptions = {
+        outputSize,
+        referenceDesign: referenceDesign || undefined,
+        referenceImageBase64: referenceImage || undefined,
+      };
+
+      await onApply(prompt, 'ai_inpaint', undefined, aiOptions);
+      setObjectPrompt('');
+      return;
+    }
 
     const text = customText.trim();
     if (!text) return;
@@ -518,28 +547,38 @@ export function FixQueuePanel({
         </button>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex border-b border-gray-200">
-        {[
-          { id: 'edit', label: '編集', icon: Edit3 },
-          { id: 'style', label: 'スタイル', icon: Palette },
-          { id: 'ai', label: 'AI', icon: Sparkles },
-        ].map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id as typeof activeTab)}
-            className={cn(
-              'flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors border-b-2',
-              activeTab === id
-                ? 'text-blue-600 border-blue-500 bg-blue-50/50'
-                : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50'
-            )}
-          >
-            <Icon className="w-4 h-4" />
-            {label}
-          </button>
-        ))}
+      {/* Mode indicator */}
+      <div className={cn(
+        'px-4 py-2 flex items-center gap-2 text-xs font-medium border-b',
+        isObjectMode ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'
+      )}>
+        {isObjectMode ? <Shapes className="w-3.5 h-3.5" /> : <Type className="w-3.5 h-3.5" />}
+        {isObjectMode ? 'オブジェクト修正モード' : 'テキスト修正モード'}
       </div>
+
+      {/* Tab bar - only show for object mode which has multiple tabs */}
+      {isObjectMode && (
+        <div className="flex border-b border-gray-200">
+          {[
+            { id: 'edit', label: '編集', icon: Edit3 },
+            { id: 'ai', label: 'AI設定', icon: Sparkles },
+          ].map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id as typeof activeTab)}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors border-b-2',
+                activeTab === id
+                  ? 'text-blue-600 border-blue-500 bg-blue-50/50'
+                  : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50'
+              )}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Content - Scrollable */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
@@ -564,74 +603,133 @@ export function FixQueuePanel({
               </div>
             )}
 
-            {/* OCR Text (Collapsible) */}
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-2 block">検出テキスト（元）</label>
-              <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-700 font-mono">
-                {currentIssue.ocr_text || '(テキストなし)'}
-              </div>
-            </div>
-
-            {/* Correction Text Input */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-bold text-gray-900">修正後のテキスト</label>
-                <button
-                  onClick={() => setCustomText(currentIssue.ocr_text || '')}
-                  className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                >
-                  <Copy className="w-3 h-3" />
-                  コピー
-                </button>
-              </div>
-              <textarea
-                value={customText}
-                onChange={(e) => setCustomText(e.target.value)}
-                placeholder="正しいテキストを入力..."
-                className="w-full px-3 py-2.5 text-sm border-2 border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white resize-none font-mono"
-                rows={3}
-                style={{
-                  fontWeight: textStyle.fontWeight,
-                  fontStyle: textStyle.fontStyle,
-                  textDecoration: textStyle.textDecoration,
-                  textAlign: textStyle.textAlign,
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customText.trim()) {
-                    handleApply();
-                  }
-                }}
-              />
-              <p className="text-xs text-gray-400 mt-1">⌘+Enter で適用</p>
-            </div>
-
-            {/* Candidates */}
-            {candidates.length > 0 && (
-              <div>
-                <label className="text-xs font-medium text-gray-500 mb-2 block">候補から選択</label>
-                <div className="space-y-1.5">
-                  {candidates.map((candidate, index) => (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        setSelectedCandidateIndex(index);
-                        setCustomText(candidate.text);
-                      }}
-                      className={cn(
-                        'w-full text-left p-2.5 rounded-lg border transition-all text-sm',
-                        customText === candidate.text
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-gray-900 truncate">{candidate.text}</span>
-                        <ConfidenceBadge confidence={candidate.confidence} />
-                      </div>
-                    </button>
-                  ))}
+            {isObjectMode ? (
+              /* Object mode: free prompt input */
+              <>
+                <div>
+                  <label className="text-xs font-bold text-gray-900 mb-2 block">修正プロンプト</label>
+                  <textarea
+                    value={objectPrompt}
+                    onChange={(e) => setObjectPrompt(e.target.value)}
+                    placeholder="例: この画像を明るくして&#10;例: ロゴを赤に変更して&#10;例: 背景をぼかして"
+                    className="w-full px-3 py-2.5 text-sm border-2 border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white resize-none"
+                    rows={4}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && objectPrompt.trim()) {
+                        handleApply();
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">⌘+Enter で適用 / Gemini AI が画像を編集します</p>
                 </div>
-              </div>
+
+                {/* Quick prompt suggestions */}
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-2 block">クイック指示</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      '明るくして',
+                      '色を鮮やかに',
+                      '背景をぼかして',
+                      'このオブジェクトを削除',
+                      'テキストを大きく',
+                      '高解像度に',
+                    ].map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        onClick={() => setObjectPrompt((prev) => prev ? `${prev}\n${suggestion}` : suggestion)}
+                        className="px-2.5 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* AI info */}
+                <div className="p-3 bg-purple-50 rounded-xl border border-purple-100">
+                  <div className="flex items-start gap-2">
+                    <Sparkles className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-purple-700">
+                      <p className="font-medium mb-1">Gemini AI で画像を編集</p>
+                      <p className="text-purple-600">選択した領域に対して、プロンプトの指示通りにAIが画像を編集します。10クレジット/回</p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* Text mode: OCR + text editing (existing) */
+              <>
+                {/* OCR Text */}
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-2 block">検出テキスト（元）</label>
+                  <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-700 font-mono">
+                    {currentIssue.ocr_text || '(テキストなし)'}
+                  </div>
+                </div>
+
+                {/* Correction Text Input */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-gray-900">修正後のテキスト</label>
+                    <button
+                      onClick={() => setCustomText(currentIssue.ocr_text || '')}
+                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" />
+                      コピー
+                    </button>
+                  </div>
+                  <textarea
+                    value={customText}
+                    onChange={(e) => setCustomText(e.target.value)}
+                    placeholder="正しいテキストを入力..."
+                    className="w-full px-3 py-2.5 text-sm border-2 border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white resize-none font-mono"
+                    rows={3}
+                    style={{
+                      fontWeight: textStyle.fontWeight,
+                      fontStyle: textStyle.fontStyle,
+                      textDecoration: textStyle.textDecoration,
+                      textAlign: textStyle.textAlign,
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customText.trim()) {
+                        handleApply();
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">⌘+Enter で適用</p>
+                </div>
+
+                {/* Candidates */}
+                {candidates.length > 0 && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-2 block">候補から選択</label>
+                    <div className="space-y-1.5">
+                      {candidates.map((candidate, index) => (
+                        <button
+                          key={index}
+                          onClick={() => {
+                            setSelectedCandidateIndex(index);
+                            setCustomText(candidate.text);
+                          }}
+                          className={cn(
+                            'w-full text-left p-2.5 rounded-lg border transition-all text-sm',
+                            customText === candidate.text
+                              ? 'border-blue-500 bg-blue-50'
+                              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium text-gray-900 truncate">{candidate.text}</span>
+                            <ConfidenceBadge confidence={candidate.confidence} />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -699,21 +797,46 @@ export function FixQueuePanel({
               </div>
             </div>
 
-            {/* Font family */}
+            {/* Font family - Accordion */}
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-2 block">フォント</label>
-              <select
-                value={textStyle.fontFamily}
-                onChange={(e) => setTextStyle(s => ({ ...s, fontFamily: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <button
+                onClick={() => setFontAccordionOpen(prev => !prev)}
+                className="w-full flex items-center justify-between text-xs font-medium text-gray-500 mb-2"
               >
-                <option value="Noto Sans JP">Noto Sans JP</option>
-                <option value="Hiragino Sans">ヒラギノ角ゴ</option>
-                <option value="Yu Gothic">游ゴシック</option>
-                <option value="Meiryo">メイリオ</option>
-                <option value="Arial">Arial</option>
-                <option value="Times New Roman">Times New Roman</option>
-              </select>
+                <span>フォント: <span className="text-gray-900 font-bold">{
+                  { 'Noto Sans JP': 'Noto Sans JP', 'Hiragino Sans': 'ヒラギノ角ゴ', 'Yu Gothic': '游ゴシック', 'Meiryo': 'メイリオ', 'Arial': 'Arial', 'Times New Roman': 'Times New Roman' }[textStyle.fontFamily] || textStyle.fontFamily
+                }</span></span>
+                {fontAccordionOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+              {fontAccordionOpen && (
+                <div className="space-y-1">
+                  {[
+                    { value: 'Noto Sans JP', label: 'Noto Sans JP' },
+                    { value: 'Hiragino Sans', label: 'ヒラギノ角ゴ' },
+                    { value: 'Yu Gothic', label: '游ゴシック' },
+                    { value: 'Meiryo', label: 'メイリオ' },
+                    { value: 'Arial', label: 'Arial' },
+                    { value: 'Times New Roman', label: 'Times New Roman' },
+                  ].map(({ value, label }) => (
+                    <button
+                      key={value}
+                      onClick={() => {
+                        setTextStyle(s => ({ ...s, fontFamily: value }));
+                        setFontAccordionOpen(false);
+                      }}
+                      className={cn(
+                        'w-full text-left px-3 py-2 text-sm rounded-lg transition-colors',
+                        textStyle.fontFamily === value
+                          ? 'bg-blue-50 text-blue-700 font-medium border border-blue-200'
+                          : 'hover:bg-gray-50 text-gray-700 border border-transparent'
+                      )}
+                      style={{ fontFamily: value }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Colors */}
@@ -922,10 +1045,10 @@ export function FixQueuePanel({
       <div className="p-4 border-t border-gray-200 bg-gradient-to-t from-gray-50 to-white space-y-2">
         <button
           onClick={handleApply}
-          disabled={isApplying || currentIssue.status === 'corrected' || !customText.trim()}
+          disabled={isApplying || currentIssue.status === 'corrected' || (isObjectMode ? !objectPrompt.trim() : !customText.trim())}
           className={cn(
             'w-full py-3.5 text-sm font-bold rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm',
-            correctionMethod === 'ai_inpaint'
+            (isObjectMode || correctionMethod === 'ai_inpaint')
               ? 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white'
               : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white'
           )}
@@ -933,7 +1056,7 @@ export function FixQueuePanel({
           {isApplying ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              {correctionMethod === 'ai_inpaint' ? 'AI生成中...' : '適用中...'}
+              {(isObjectMode || correctionMethod === 'ai_inpaint') ? 'AI生成中...' : '適用中...'}
             </>
           ) : currentIssue.status === 'corrected' ? (
             <>
@@ -942,8 +1065,8 @@ export function FixQueuePanel({
             </>
           ) : (
             <>
-              {correctionMethod === 'ai_inpaint' ? <Sparkles className="w-4 h-4" /> : <Check className="w-4 h-4" />}
-              適用して次へ
+              {(isObjectMode || correctionMethod === 'ai_inpaint') ? <Sparkles className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+              {isObjectMode ? 'AI編集を実行' : '適用して次へ'}
             </>
           )}
         </button>

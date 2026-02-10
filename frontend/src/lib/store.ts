@@ -19,6 +19,7 @@ export interface Issue {
   bbox: BBox;
   ocrText: string;
   issueType: 'manual' | 'detected' | 'low_confidence' | 'garbled';
+  editMode?: 'text' | 'object';
   status: 'detected' | 'corrected' | 'skipped';
   correctedText?: string;
   candidates?: Candidate[];

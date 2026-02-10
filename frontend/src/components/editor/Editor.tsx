@@ -334,14 +334,15 @@ export function Editor({ projectId }: EditorProps) {
     setShowExportPanel(true);
   }, []);
 
-  // Create issue from canvas selection
-  const handleCreateIssue = useCallback((bbox: BBox) => {
+  // Create issue from canvas selection, then auto-OCR
+  const handleCreateIssue = useCallback((bbox: BBox, editMode: 'text' | 'object' = 'text') => {
     const newIssue: Issue = {
       id: generateId(),
       pageNumber: currentPageNumber,
       bbox,
       ocrText: '',
       issueType: 'manual',
+      editMode,
       status: 'detected',
     };
 
@@ -358,8 +359,71 @@ export function Editor({ projectId }: EditorProps) {
 
     setSelectedIssue(newIssue);
     setCurrentIssueIndex(issues.length);
-    addToast('success', 'Issue を追加しました');
-  }, [projectId, currentPageNumber, issues.length, addIssue, addToast]);
+
+    if (editMode === 'object') {
+      addToast('success', 'オブジェクト修正: プロンプトを入力してください');
+      return;
+    }
+
+    addToast('success', 'Issue を追加しました。テキストを読み取り中...');
+
+    // Auto-OCR the selected region using Gemini (text mode only)
+    if (currentPage) {
+      (async () => {
+        try {
+          // Crop the region from the page image
+          const img = new window.Image();
+          img.src = currentPage.imageDataUrl;
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error('Image load failed'));
+          });
+
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+
+          const padding = 10;
+          const cropX = Math.max(0, bbox.x - padding);
+          const cropY = Math.max(0, bbox.y - padding);
+          const cropW = Math.min(bbox.width + padding * 2, img.width - cropX);
+          const cropH = Math.min(bbox.height + padding * 2, img.height - cropY);
+
+          canvas.width = cropW;
+          canvas.height = cropH;
+          ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+          const regionBase64 = canvas.toDataURL('image/png');
+
+          const { ocrRegion } = await import('@/lib/gemini');
+          const result = await ocrRegion(regionBase64);
+
+          if (result.text) {
+            // Update ocrText in store and local state
+            updateIssue(projectId, newIssue.id, { ocrText: result.text });
+            setProject((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                issues: prev.issues.map((i) =>
+                  i.id === newIssue.id ? { ...i, ocrText: result.text } : i
+                ),
+              };
+            });
+            setSelectedIssue((prev) =>
+              prev?.id === newIssue.id ? { ...prev, ocrText: result.text } : prev
+            );
+            addToast('success', `テキスト読み取り完了: "${result.text.substring(0, 30)}${result.text.length > 30 ? '...' : ''}"`);
+          } else {
+            addToast('warning', 'テキストが検出されませんでした');
+          }
+        } catch (err) {
+          console.error('Auto OCR failed:', err);
+          addToast('error', `テキスト読み取り失敗: ${err instanceof Error ? err.message : '不明なエラー'}`);
+        }
+      })();
+    }
+  }, [projectId, currentPageNumber, currentPage, issues.length, addIssue, updateIssue, addToast]);
 
   // Delete issue from canvas
   const handleDeleteIssue = useCallback((issueId: string) => {
@@ -382,6 +446,67 @@ export function Editor({ projectId }: EditorProps) {
 
     addToast('success', '選択箇所を削除しました');
   }, [projectId, selectedIssue?.id, deleteIssue, addToast]);
+
+  // Re-run OCR on an existing issue
+  const handleRerunOcr = useCallback(async (issueId: string) => {
+    const issue = issues.find((i) => i.id === issueId);
+    if (!issue) return;
+
+    const page = pages.find((p) => p.pageNumber === issue.pageNumber);
+    if (!page) return;
+
+    addToast('success', 'テキストを再読み取り中...');
+
+    try {
+      const img = new window.Image();
+      img.src = page.imageDataUrl;
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Image load failed'));
+      });
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const padding = 10;
+      const cropX = Math.max(0, issue.bbox.x - padding);
+      const cropY = Math.max(0, issue.bbox.y - padding);
+      const cropW = Math.min(issue.bbox.width + padding * 2, img.width - cropX);
+      const cropH = Math.min(issue.bbox.height + padding * 2, img.height - cropY);
+
+      canvas.width = cropW;
+      canvas.height = cropH;
+      ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+      const regionBase64 = canvas.toDataURL('image/png');
+
+      const { ocrRegion } = await import('@/lib/gemini');
+      const result = await ocrRegion(regionBase64);
+
+      if (result.text) {
+        updateIssue(projectId, issueId, { ocrText: result.text });
+        setProject((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            issues: prev.issues.map((i) =>
+              i.id === issueId ? { ...i, ocrText: result.text } : i
+            ),
+          };
+        });
+        setSelectedIssue((prev) =>
+          prev?.id === issueId ? { ...prev, ocrText: result.text } : prev
+        );
+        addToast('success', `テキスト読み取り完了: "${result.text.substring(0, 30)}${result.text.length > 30 ? '...' : ''}"`);
+      } else {
+        addToast('warning', 'テキストが検出されませんでした');
+      }
+    } catch (err) {
+      console.error('Re-run OCR failed:', err);
+      addToast('error', `テキスト読み取り失敗: ${err instanceof Error ? err.message : '不明なエラー'}`);
+    }
+  }, [issues, pages, projectId, updateIssue, addToast]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -542,6 +667,7 @@ export function Editor({ projectId }: EditorProps) {
             status: i.status,
             auto_correctable: true,
             candidates: i.candidates,
+            edit_mode: i.editMode || 'text',
           }))}
           currentIssue={selectedIssue ? {
             id: selectedIssue.id,
@@ -555,6 +681,7 @@ export function Editor({ projectId }: EditorProps) {
             status: selectedIssue.status,
             auto_correctable: true,
             candidates: selectedIssue.candidates,
+            edit_mode: selectedIssue.editMode || 'text',
           } : null}
           currentIndex={currentIssueIndex}
           onNext={handleNextIssue}
@@ -564,6 +691,7 @@ export function Editor({ projectId }: EditorProps) {
           isApplying={isApplying}
           regionPreviewUrl={regionPreviewUrl || undefined}
           onDeleteIssue={handleDeleteIssue}
+          onRerunOcr={handleRerunOcr}
         />
       </div>
 
