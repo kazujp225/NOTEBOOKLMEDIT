@@ -44,6 +44,7 @@ export function Editor({ projectId }: EditorProps) {
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [undoStack, setUndoStack] = useState<{ issueId: string; pageNumber: number; previousImageDataUrl: string }[]>([]);
+  const [redoStack, setRedoStack] = useState<{ issueId: string; pageNumber: number; previousImageDataUrl: string }[]>([]);
   const [jobStatus, setJobStatus] = useState<{ type: 'ocr' | 'generate' | 'export'; message: string } | null>(null);
   const [regionPreviewUrl, setRegionPreviewUrl] = useState<string | null>(null);
 
@@ -57,6 +58,11 @@ export function Editor({ projectId }: EditorProps) {
 
       try {
         const loadedProject = await loadProjectWithImages(projectId);
+        console.log('[Editor] loadedProject:', {
+          pages: loadedProject?.pages.length,
+          firstPageImageLength: loadedProject?.pages[0]?.imageDataUrl?.length,
+          firstPageImagePrefix: loadedProject?.pages[0]?.imageDataUrl?.substring(0, 80),
+        });
         if (loadedProject) {
           setProject(loadedProject);
 
@@ -288,12 +294,13 @@ export function Editor({ projectId }: EditorProps) {
         correctedText: text,
       });
 
-      // Add to undo stack
+      // Add to undo stack (limit to 20 entries) and clear redo stack
       setUndoStack((prev) => [...prev, {
         issueId: selectedIssue.id,
         pageNumber: currentPageNumber,
         previousImageDataUrl,
-      }]);
+      }].slice(-20));
+      setRedoStack([]);
 
       // Move to next unresolved issue
       const nextUnresolved = issues.find(
@@ -325,8 +332,12 @@ export function Editor({ projectId }: EditorProps) {
 
     const lastUndo = undoStack[undoStack.length - 1];
 
-    // Restore the previous image to IndexedDB
+    // Save current image for redo before restoring
     const imageKey = `${projectId}/page-${lastUndo.pageNumber}`;
+    const currentPage = project.pages.find((p) => p.pageNumber === lastUndo.pageNumber);
+    const currentImageDataUrl = currentPage?.imageDataUrl || '';
+
+    // Restore the previous image to IndexedDB
     await saveImage(imageKey, lastUndo.previousImageDataUrl);
 
     // Update local state
@@ -348,9 +359,58 @@ export function Editor({ projectId }: EditorProps) {
       correctedText: undefined,
     });
 
+    // Push to redo stack
+    setRedoStack((prev) => [...prev, {
+      issueId: lastUndo.issueId,
+      pageNumber: lastUndo.pageNumber,
+      previousImageDataUrl: currentImageDataUrl,
+    }].slice(-20));
+
     setUndoStack((prev) => prev.slice(0, -1));
     addToast('success', '元に戻しました');
   }, [undoStack, project, projectId, updateIssue, addToast]);
+
+  const handleRedo = useCallback(async () => {
+    if (redoStack.length === 0 || !project) return;
+
+    const lastRedo = redoStack[redoStack.length - 1];
+
+    // Save current image for undo before applying redo
+    const imageKey = `${projectId}/page-${lastRedo.pageNumber}`;
+    const currentPage = project.pages.find((p) => p.pageNumber === lastRedo.pageNumber);
+    const currentImageDataUrl = currentPage?.imageDataUrl || '';
+
+    // Restore the redo image to IndexedDB
+    await saveImage(imageKey, lastRedo.previousImageDataUrl);
+
+    // Update local state
+    setProject((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        pages: prev.pages.map((p) =>
+          p.pageNumber === lastRedo.pageNumber
+            ? { ...p, imageDataUrl: lastRedo.previousImageDataUrl }
+            : p
+        ),
+      };
+    });
+
+    // Restore issue status to corrected
+    updateIssue(projectId, lastRedo.issueId, {
+      status: 'corrected',
+    });
+
+    // Push to undo stack
+    setUndoStack((prev) => [...prev, {
+      issueId: lastRedo.issueId,
+      pageNumber: lastRedo.pageNumber,
+      previousImageDataUrl: currentImageDataUrl,
+    }].slice(-20));
+
+    setRedoStack((prev) => prev.slice(0, -1));
+    addToast('success', 'やり直しました');
+  }, [redoStack, project, projectId, updateIssue, addToast]);
 
   const handleExportPdf = useCallback(() => {
     setShowExportPanel(true);
@@ -541,6 +601,8 @@ export function Editor({ projectId }: EditorProps) {
         return;
       }
 
+      const isModifier = e.ctrlKey || e.metaKey;
+
       switch (e.key.toLowerCase()) {
         case 'j':
           handleNextIssue();
@@ -549,7 +611,7 @@ export function Editor({ projectId }: EditorProps) {
           handlePreviousIssue();
           break;
         case 's':
-          if (!e.ctrlKey && !e.metaKey) {
+          if (!isModifier) {
             handleSkip();
           }
           break;
@@ -557,8 +619,20 @@ export function Editor({ projectId }: EditorProps) {
           handleUndo();
           break;
         case 'z':
-          if (!e.ctrlKey && !e.metaKey) {
+          if (isModifier && e.shiftKey) {
+            e.preventDefault();
+            handleRedo();
+          } else if (isModifier) {
+            e.preventDefault();
+            handleUndo();
+          } else {
             setZoom((prev) => Math.min(4, prev + 0.25));
+          }
+          break;
+        case 'y':
+          if (isModifier) {
+            e.preventDefault();
+            handleRedo();
           }
           break;
         case 'x':
@@ -572,7 +646,7 @@ export function Editor({ projectId }: EditorProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleNextIssue, handlePreviousIssue, handleSkip, handleUndo]);
+  }, [handleNextIssue, handlePreviousIssue, handleSkip, handleUndo, handleRedo]);
 
   // Loading state
   if (isLoading) {
@@ -614,6 +688,8 @@ export function Editor({ projectId }: EditorProps) {
         onExportPptx={handleExportPptx}
         onUndo={handleUndo}
         canUndo={undoStack.length > 0}
+        onRedo={handleRedo}
+        canRedo={redoStack.length > 0}
       />
 
       <div className="flex-1 flex overflow-hidden">

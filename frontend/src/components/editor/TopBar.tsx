@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   ChevronLeft,
   Undo2,
+  Redo2,
   Download,
 } from 'lucide-react';
 
@@ -17,6 +18,8 @@ interface TopBarProps {
   onExportPptx: () => void;
   onUndo: () => void;
   canUndo: boolean;
+  onRedo: () => void;
+  canRedo: boolean;
   isExporting?: boolean;
 }
 
@@ -26,6 +29,8 @@ export function TopBar({
   onExportPdf,
   onUndo,
   canUndo,
+  onRedo,
+  canRedo,
   isExporting,
 }: TopBarProps) {
   return (
@@ -52,9 +57,19 @@ export function TopBar({
           disabled={!canUndo}
           className="p-1.5 hover:bg-gray-200 rounded transition-colors disabled:opacity-30"
           aria-label="元に戻す"
-          title="元に戻す (U)"
+          title="元に戻す (Ctrl+Z / U)"
         >
           <Undo2 className="w-4 h-4 text-gray-600" />
+        </button>
+
+        <button
+          onClick={onRedo}
+          disabled={!canRedo}
+          className="p-1.5 hover:bg-gray-200 rounded transition-colors disabled:opacity-30"
+          aria-label="やり直す"
+          title="やり直す (Ctrl+Shift+Z)"
+        >
+          <Redo2 className="w-4 h-4 text-gray-600" />
         </button>
 
         <button
