@@ -195,6 +195,13 @@ export function Editor({ projectId }: EditorProps) {
         // Use Gemini AI for inpainting
         const { inpaintImage } = await import('@/lib/gemini');
 
+        // Get base64 data URL from IndexedDB (ObjectURL can't be sent to API)
+        const imageKey = `${projectId}/page-${currentPageNumber}`;
+        const imageBase64 = await getImage(imageKey);
+        if (!imageBase64) {
+          throw new Error('画像データを取得できませんでした');
+        }
+
         // Convert bbox to 0-1 ratio
         const mask = {
           x: selectedIssue.bbox.x / currentPage.width,
@@ -203,10 +210,29 @@ export function Editor({ projectId }: EditorProps) {
           height: selectedIssue.bbox.height / currentPage.height,
         };
 
+        // Build prompt based on edit mode and input content
+        const isObjectEdit = selectedIssue.editMode === 'object';
+        let inpaintPrompt: string;
+
+        if (isObjectEdit) {
+          // Object mode: user input is always an instruction
+          inpaintPrompt = `この画像の指定された領域について: ${text}。周囲のデザインと調和するようにしてください。`;
+        } else {
+          // Text mode with AI edit: detect if input is an instruction or replacement text
+          const isInstruction = /[してくれ|ください|変えて|消して|削除|除去|なくし|修正|変更|大きく|小さく|太く|薄く|濃く|明るく|暗く]/.test(text) || text.length > 30;
+          if (isInstruction) {
+            // User is giving an instruction (e.g., "この文字を消して")
+            inpaintPrompt = `この画像の指定された領域について: ${text}。周囲のデザインと自然に調和するようにしてください。`;
+          } else {
+            // User is providing replacement text (e.g., "正しいテキスト")
+            inpaintPrompt = `この領域のテキスト「${selectedIssue.ocrText || ''}」を「${text}」に修正してください。フォント・サイズ・色は元のテキストと同じにし、周囲のデザインと調和するようにしてください。`;
+          }
+        }
+
         const result = await inpaintImage({
-          imageBase64: currentPage.imageDataUrl,
+          imageBase64,
           masks: [mask],
-          prompt: `この領域のテキスト「${selectedIssue.ocrText || ''}」を「${text}」に修正してください。周囲のデザインと調和するようにしてください。`,
+          prompt: inpaintPrompt,
           referenceDesign: aiOptions?.referenceDesign,
           referenceImageBase64: aiOptions?.referenceImageBase64,
           outputSize: aiOptions?.outputSize || '4K',
@@ -618,7 +644,7 @@ export function Editor({ projectId }: EditorProps) {
           }))}
           projectId={projectId}
           currentPageNumber={currentPageNumber}
-          onPageSelect={handlePageSelect}
+          onPageSelect={isApplying ? () => {} : handlePageSelect}
         />
 
         {currentPage ? (
@@ -637,16 +663,19 @@ export function Editor({ projectId }: EditorProps) {
               detected_problems: [],
               status: i.status,
               auto_correctable: true,
+              edit_mode: i.editMode,
             }))}
             selectedIssueId={selectedIssue?.id || null}
             onIssueClick={(issue) => {
+              if (isApplying) return;
               const storeIssue = issues.find((i) => i.id === issue.id);
               if (storeIssue) handleIssueSelect(storeIssue);
             }}
-            onCreateIssue={handleCreateIssue}
-            onDeleteIssue={handleDeleteIssue}
+            onCreateIssue={isApplying ? undefined : handleCreateIssue}
+            onDeleteIssue={isApplying ? undefined : handleDeleteIssue}
             zoom={zoom}
             onZoomChange={setZoom}
+            disabled={isApplying}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center bg-gray-100">
@@ -688,6 +717,10 @@ export function Editor({ projectId }: EditorProps) {
           onPrevious={handlePreviousIssue}
           onApply={handleApply}
           onSkip={handleSkip}
+          onSelectIssue={(fixIssue) => {
+            const storeIssue = issues.find((i) => i.id === fixIssue.id);
+            if (storeIssue) handleIssueSelect(storeIssue);
+          }}
           isApplying={isApplying}
           regionPreviewUrl={regionPreviewUrl || undefined}
           onDeleteIssue={handleDeleteIssue}

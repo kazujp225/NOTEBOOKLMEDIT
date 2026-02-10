@@ -73,6 +73,202 @@ export async function processPdf(
 }
 
 /**
+ * Process image files (JPG, PNG, WebP etc.) as single-page documents
+ */
+export async function processImages(
+  files: File[],
+  onProgress?: (current: number, total: number) => void
+): Promise<ProcessedPage[]> {
+  const pages: ProcessedPage[] = [];
+
+  for (let i = 0; i < files.length; i++) {
+    onProgress?.(i + 1, files.length);
+
+    const file = files[i];
+    const imageDataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+    // 画像の寸法を取得
+    const { width, height } = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+      img.src = imageDataUrl;
+    });
+
+    // サムネイル生成
+    const thumbWidth = 150;
+    const thumbScale = thumbWidth / width;
+    const thumbHeight = height * thumbScale;
+
+    const thumbCanvas = document.createElement('canvas');
+    const thumbCtx = thumbCanvas.getContext('2d')!;
+    thumbCanvas.width = thumbWidth;
+    thumbCanvas.height = thumbHeight;
+
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('サムネイル生成に失敗しました'));
+      img.src = imageDataUrl;
+    });
+
+    thumbCtx.drawImage(img, 0, 0, thumbWidth, thumbHeight);
+    const thumbnailDataUrl = thumbCanvas.toDataURL('image/jpeg', 0.7);
+
+    pages.push({
+      pageNumber: i + 1,
+      imageDataUrl,
+      thumbnailDataUrl,
+      width,
+      height,
+    });
+  }
+
+  return pages;
+}
+
+/**
+ * Process a PPTX file by converting slides to images
+ * Uses the browser's rendering capabilities
+ */
+export async function processPptx(
+  file: File,
+  onProgress?: (current: number, total: number) => void
+): Promise<ProcessedPage[]> {
+  // PPTXはZIPファイルなので、JSZipで展開してスライド画像を抽出
+  const JSZip = (await import('jszip')).default;
+  const arrayBuffer = await file.arrayBuffer();
+  const zip = await JSZip.loadAsync(arrayBuffer);
+
+  // スライド画像を探す（ppt/media/ 内の画像ファイル）
+  // まずスライドのリレーションからスライド数を特定
+  const slideFiles: string[] = [];
+  zip.forEach((relativePath) => {
+    if (relativePath.match(/^ppt\/slides\/slide\d+\.xml$/)) {
+      slideFiles.push(relativePath);
+    }
+  });
+
+  // スライド番号順にソート
+  slideFiles.sort((a, b) => {
+    const numA = parseInt(a.match(/slide(\d+)/)?.[1] || '0');
+    const numB = parseInt(b.match(/slide(\d+)/)?.[1] || '0');
+    return numA - numB;
+  });
+
+  if (slideFiles.length === 0) {
+    throw new Error('PPTXファイルにスライドが見つかりませんでした');
+  }
+
+  const totalSlides = slideFiles.length;
+  const pages: ProcessedPage[] = [];
+
+  // スライドごとに関連画像を取得
+  for (let i = 0; i < totalSlides; i++) {
+    onProgress?.(i + 1, totalSlides);
+
+    const slideNum = i + 1;
+    const relPath = `ppt/slides/_rels/slide${slideNum}.xml.rels`;
+    const relFile = zip.file(relPath);
+
+    let slideImageDataUrl: string | null = null;
+
+    if (relFile) {
+      const relXml = await relFile.async('string');
+
+      // リレーションから画像ファイルパスを抽出
+      const imageMatches = relXml.match(/Target="([^"]*\.(png|jpg|jpeg|gif|bmp|emf|wmf))"/gi);
+      if (imageMatches) {
+        for (const match of imageMatches) {
+          const targetMatch = match.match(/Target="([^"]*)"/);
+          if (!targetMatch) continue;
+
+          let imagePath = targetMatch[1];
+          // 相対パスを解決
+          if (imagePath.startsWith('../')) {
+            imagePath = 'ppt/' + imagePath.replace('../', '');
+          } else if (!imagePath.startsWith('ppt/')) {
+            imagePath = 'ppt/slides/' + imagePath;
+          }
+
+          const imageFile = zip.file(imagePath);
+          if (imageFile) {
+            const blob = await imageFile.async('blob');
+            const mimeType = imagePath.match(/\.png$/i) ? 'image/png' :
+                             imagePath.match(/\.(jpg|jpeg)$/i) ? 'image/jpeg' :
+                             'image/png';
+            const blobWithType = new Blob([blob], { type: mimeType });
+            slideImageDataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = () => reject(reader.error);
+              reader.readAsDataURL(blobWithType);
+            });
+            break; // 最初の画像を使用
+          }
+        }
+      }
+    }
+
+    // 画像が見つからない場合はプレースホルダーを作成
+    if (!slideImageDataUrl) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1920;
+      canvas.height = 1080;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 1920, 1080);
+      ctx.fillStyle = '#999999';
+      ctx.font = '32px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`スライド ${slideNum}`, 960, 540);
+      slideImageDataUrl = canvas.toDataURL('image/png');
+    }
+
+    // 画像の寸法を取得
+    const { width, height } = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => reject(new Error('スライド画像の読み込みに失敗しました'));
+      img.src = slideImageDataUrl!;
+    });
+
+    // サムネイル生成
+    const thumbWidth = 150;
+    const thumbScale = thumbWidth / width;
+    const thumbHeight = height * thumbScale;
+    const thumbCanvas = document.createElement('canvas');
+    const thumbCtx = thumbCanvas.getContext('2d')!;
+    thumbCanvas.width = thumbWidth;
+    thumbCanvas.height = thumbHeight;
+
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject();
+      img.src = slideImageDataUrl!;
+    });
+    thumbCtx.drawImage(img, 0, 0, thumbWidth, thumbHeight);
+    const thumbnailDataUrl = thumbCanvas.toDataURL('image/jpeg', 0.7);
+
+    pages.push({
+      pageNumber: slideNum,
+      imageDataUrl: slideImageDataUrl,
+      thumbnailDataUrl,
+      width,
+      height,
+    });
+  }
+
+  return pages;
+}
+
+/**
  * Extract ROI from page image
  */
 export function extractRoi(

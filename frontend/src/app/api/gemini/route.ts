@@ -837,3 +837,4 @@ async function ocrRegion(params: {
 
   return { text: text.trim() };
 }
+

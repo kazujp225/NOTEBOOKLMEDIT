@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface PageForPanel {
@@ -86,11 +87,15 @@ export function PagesPanel({
                 />
 
                 {/* Issue count badge */}
-                {unresolvedCount > 0 && (
-                  <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded min-w-[16px] text-center">
+                {unresolvedCount > 0 ? (
+                  <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-500 text-white text-[10px] font-bold rounded min-w-[16px] text-center">
                     {unresolvedCount}
                   </div>
-                )}
+                ) : pageIssues.length > 0 ? (
+                  <div className="absolute top-1 right-1 w-4 h-4 bg-green-500 text-white rounded-full flex items-center justify-center">
+                    <Check className="w-2.5 h-2.5" />
+                  </div>
+                ) : null}
               </div>
 
               {/* Page number */}
