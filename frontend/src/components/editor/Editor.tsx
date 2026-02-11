@@ -407,6 +407,23 @@ export function Editor({ projectId }: EditorProps) {
     addToast('success', 'やり直しました');
   }, [redoStack, project, projectId, updateIssue, addToast]);
 
+  const handleSave = useCallback(async () => {
+    if (!project) return;
+    try {
+      // Save all page images to IndexedDB
+      for (const page of project.pages) {
+        const imageKey = `${projectId}/page-${page.pageNumber}`;
+        await saveImage(imageKey, page.imageDataUrl);
+      }
+      // Update project metadata timestamp
+      updateProject(projectId, {});
+      addToast('success', '保存しました');
+    } catch (err) {
+      console.error('Save failed:', err);
+      addToast('error', '保存に失敗しました');
+    }
+  }, [project, projectId, updateProject, addToast]);
+
   const handleExportPdf = useCallback(() => {
     setShowExportPanel(true);
   }, []);
@@ -606,7 +623,10 @@ export function Editor({ projectId }: EditorProps) {
           handlePreviousIssue();
           break;
         case 's':
-          if (!isModifier) {
+          if (isModifier) {
+            e.preventDefault();
+            handleSave();
+          } else {
             handleSkip();
           }
           break;
@@ -641,7 +661,7 @@ export function Editor({ projectId }: EditorProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleNextIssue, handlePreviousIssue, handleSkip, handleUndo, handleRedo]);
+  }, [handleNextIssue, handlePreviousIssue, handleSkip, handleUndo, handleRedo, handleSave]);
 
   // Loading state
   if (isLoading) {
@@ -685,6 +705,7 @@ export function Editor({ projectId }: EditorProps) {
         canUndo={undoStack.length > 0}
         onRedo={handleRedo}
         canRedo={redoStack.length > 0}
+        onSave={handleSave}
       />
 
       <div className="flex-1 flex overflow-hidden">
