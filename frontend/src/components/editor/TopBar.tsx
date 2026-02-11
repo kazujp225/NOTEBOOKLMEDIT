@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   Undo2,
   Redo2,
+  Save,
   Download,
 } from 'lucide-react';
 
@@ -20,6 +21,7 @@ interface TopBarProps {
   canUndo: boolean;
   onRedo: () => void;
   canRedo: boolean;
+  onSave: () => void;
   isExporting?: boolean;
 }
 
@@ -31,6 +33,7 @@ export function TopBar({
   canUndo,
   onRedo,
   canRedo,
+  onSave,
   isExporting,
 }: TopBarProps) {
   return (
@@ -70,6 +73,15 @@ export function TopBar({
           title="やり直す (Ctrl+Shift+Z)"
         >
           <Redo2 className="w-4 h-4 text-gray-600" />
+        </button>
+
+        <button
+          onClick={onSave}
+          className="p-1.5 hover:bg-gray-200 rounded transition-colors"
+          aria-label="保存"
+          title="保存 (Ctrl+S)"
+        >
+          <Save className="w-4 h-4 text-gray-600" />
         </button>
 
         <button
