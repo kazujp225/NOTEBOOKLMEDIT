@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X, Trash2, Move, Copy, Shapes, Check, AlertCircle } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X, Trash2, Move, Copy, Shapes, Check, AlertCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip } from '@/components/ui/Tooltip';
 
@@ -66,6 +66,7 @@ export function CanvasViewer({
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
   const [drawEnd, setDrawEnd] = useState({ x: 0, y: 0 });
   const [showHint, setShowHint] = useState(true);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Update container size on resize
   useEffect(() => {
@@ -100,6 +101,19 @@ export function CanvasViewer({
     const timer = setTimeout(() => setShowHint(false), 15000);
     return () => clearTimeout(timer);
   }, [issues.length]);
+
+  // Elapsed time counter during AI processing
+  useEffect(() => {
+    if (!disabled) {
+      setElapsedSeconds(0);
+      return;
+    }
+    setElapsedSeconds(0);
+    const interval = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [disabled]);
 
   // Calculate fit scale
   const fitScale = Math.min(
@@ -499,10 +513,36 @@ export function CanvasViewer({
 
       {/* Disabled overlay during AI processing */}
       {disabled && (
-        <div className="absolute inset-0 bg-white/50 z-50 flex items-center justify-center pointer-events-auto">
-          <div className="px-5 py-3 bg-white rounded-lg shadow-md border border-gray-200 flex items-center gap-3">
-            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            <span className="text-sm font-medium text-gray-700">AI処理中...</span>
+        <div className="absolute inset-0 bg-gray-100/80 backdrop-blur-sm z-50 flex items-center justify-center pointer-events-auto">
+          <div className="flex flex-col items-center gap-5 max-w-sm w-full px-6">
+            {/* Spinner */}
+            <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+            </div>
+
+            {/* Title */}
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-gray-900">AIが画像を修正しています</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                しばらくお待ちください... ({elapsedSeconds}秒)
+              </p>
+            </div>
+
+            {/* Progress bar */}
+            <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 rounded-full animate-pulse"
+                style={{ width: `${Math.min(90, elapsedSeconds * 3)}%`, transition: 'width 1s ease' }}
+              />
+            </div>
+
+            {/* Warning */}
+            <div className="w-full bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-amber-700">
+                処理が完了するまでこのページで待機してください。
+              </p>
+            </div>
           </div>
         </div>
       )}
