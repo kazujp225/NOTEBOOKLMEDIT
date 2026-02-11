@@ -311,7 +311,10 @@ export function FixQueuePanel({
   // Reset state when issue changes
   useEffect(() => {
     setObjectPrompt('');
-    if (!currentIssue || currentIssue.edit_mode !== 'object') {
+    // Reset to edit tab; also handle: switching from text mode (style tab) to object mode (no style tab)
+    if (currentIssue?.edit_mode === 'object' && activeTab === 'style') {
+      setActiveTab('edit');
+    } else if (!currentIssue || currentIssue.edit_mode !== 'object') {
       setActiveTab('edit');
     }
   }, [currentIssue?.id]);
@@ -666,29 +669,34 @@ export function FixQueuePanel({
         {isObjectMode ? 'オブジェクト修正モード' : 'テキスト修正モード'}
       </div>
 
-      {/* Tab bar - only show for object mode which has multiple tabs */}
-      {isObjectMode && (
-        <div className="flex border-b border-gray-200">
-          {[
-            { id: 'edit', label: '編集', icon: Edit3 },
-            { id: 'ai', label: 'AI設定', icon: Settings2 },
-          ].map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id as typeof activeTab)}
-              className={cn(
-                'flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors border-b-2',
-                activeTab === id
-                  ? 'text-blue-600 border-blue-500'
-                  : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50'
-              )}
-            >
-              <Icon className="w-4 h-4" />
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Tab bar */}
+      <div className="flex border-b border-gray-200">
+        {(isObjectMode
+          ? [
+              { id: 'edit', label: '編集', icon: Edit3 },
+              { id: 'ai', label: 'AI設定', icon: Settings2 },
+            ]
+          : [
+              { id: 'edit', label: '編集', icon: Edit3 },
+              { id: 'style', label: 'スタイル', icon: Palette },
+              { id: 'ai', label: 'AI設定', icon: Settings2 },
+            ]
+        ).map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id as typeof activeTab)}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors border-b-2',
+              activeTab === id
+                ? 'text-blue-600 border-blue-500'
+                : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50'
+            )}
+          >
+            <Icon className="w-4 h-4" />
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* Content - Scrollable */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
@@ -745,7 +753,7 @@ export function FixQueuePanel({
                 </div>
               </>
             ) : (
-              /* Text mode: unified edit input */
+              /* Text mode */
               <>
                 {/* OCR Text (editable) */}
                 {currentIssue.ocr_text !== undefined && (
@@ -770,28 +778,73 @@ export function FixQueuePanel({
                   </div>
                 )}
 
-                {/* Unified Edit Input */}
+                {/* Correction method toggle */}
                 <div>
-                  <label className="text-xs font-medium text-gray-700 mb-2 block">この領域をどう編集しますか？</label>
-                  <textarea
-                    value={customText}
-                    onChange={(e) => setCustomText(e.target.value)}
-                    placeholder={"例: フォントを大きくして\n例: 背景を白に変えて\n例: この文字を消して\n例: 「正しいテキスト」に修正して"}
-                    className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white resize-none"
-                    rows={3}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customText.trim()) {
-                        handleApply();
-                      }
-                    }}
-                  />
-                  <p className="text-xs text-gray-400 mt-1">⌘+Enter で適用</p>
+                  <label className="text-xs font-medium text-gray-500 mb-2 block">修正方法</label>
+                  <div className="grid grid-cols-2 gap-1 p-1 bg-gray-100 rounded-lg">
+                    <button
+                      onClick={() => setCorrectionMethod('ai_inpaint')}
+                      className={cn(
+                        'py-2 text-xs font-medium rounded-md transition-all flex items-center justify-center gap-1.5',
+                        correctionMethod === 'ai_inpaint'
+                          ? 'bg-white text-blue-700 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      )}
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      AI修正
+                    </button>
+                    <button
+                      onClick={() => setCorrectionMethod('text_overlay')}
+                      className={cn(
+                        'py-2 text-xs font-medium rounded-md transition-all flex items-center justify-center gap-1.5',
+                        correctionMethod === 'text_overlay'
+                          ? 'bg-white text-green-700 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      )}
+                    >
+                      <Type className="w-3.5 h-3.5" />
+                      テキスト上書き
+                    </button>
+                  </div>
                 </div>
 
-                {/* AI edit info */}
-                <p className="text-xs text-gray-400">
-                  AIが指示に従って画像を編集します（10クレジット）
-                </p>
+                {/* Input area - changes based on correction method */}
+                {correctionMethod === 'ai_inpaint' ? (
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 mb-2 block">この領域をどう編集しますか？</label>
+                    <textarea
+                      value={customText}
+                      onChange={(e) => setCustomText(e.target.value)}
+                      placeholder={"例: フォントを大きくして\n例: 背景を白に変えて\n例: この文字を消して\n例: 「正しいテキスト」に修正して"}
+                      className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white resize-none"
+                      rows={3}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customText.trim()) {
+                          handleApply();
+                        }
+                      }}
+                    />
+                    <p className="text-xs text-gray-400 mt-1">AIが指示に従って画像を編集します（10クレジット） ⌘+Enter で適用</p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 mb-2 block">置換テキスト</label>
+                    <textarea
+                      value={customText}
+                      onChange={(e) => setCustomText(e.target.value)}
+                      placeholder="正しいテキストを入力してください"
+                      className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white resize-none"
+                      rows={2}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customText.trim()) {
+                          handleApply();
+                        }
+                      }}
+                    />
+                    <p className="text-xs text-gray-400 mt-1">「スタイル」タブでフォントや色を調整できます ⌘+Enter で適用</p>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -1066,7 +1119,12 @@ export function FixQueuePanel({
         <button
           onClick={handleApply}
           disabled={isApplying || currentIssue.status === 'corrected' || (isObjectMode ? !objectPrompt.trim() : !customText.trim())}
-          className="w-full py-3 text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+          className={cn(
+            'w-full py-3 text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-white',
+            (!isObjectMode && correctionMethod === 'text_overlay')
+              ? 'bg-green-600 hover:bg-green-700'
+              : 'bg-blue-600 hover:bg-blue-700'
+          )}
         >
           {isApplying ? (
             <>
@@ -1078,10 +1136,20 @@ export function FixQueuePanel({
               <CheckCircle2 className="w-4 h-4" />
               修正済み
             </>
+          ) : isObjectMode ? (
+            <>
+              <Zap className="w-4 h-4" />
+              AI編集を実行
+            </>
+          ) : correctionMethod === 'ai_inpaint' ? (
+            <>
+              <Zap className="w-4 h-4" />
+              AI修正を実行
+            </>
           ) : (
             <>
-              <Check className="w-4 h-4" />
-              {isObjectMode ? 'AI編集を実行' : '適用して次へ'}
+              <Type className="w-4 h-4" />
+              テキストを上書き
             </>
           )}
         </button>
