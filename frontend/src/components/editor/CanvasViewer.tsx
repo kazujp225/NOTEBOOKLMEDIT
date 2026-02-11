@@ -83,10 +83,14 @@ export function CanvasViewer({
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  // Reset image loaded state when URL changes
-  useEffect(() => {
-    setImageLoaded(false);
-  }, [imageUrl]);
+  // Reset image loaded state when URL changes, using ref to avoid race condition
+  const prevImageUrlRef = useRef(imageUrl);
+  if (prevImageUrlRef.current !== imageUrl) {
+    prevImageUrlRef.current = imageUrl;
+    if (imageLoaded) {
+      setImageLoaded(false);
+    }
+  }
 
   // Hide hint after first issue created or after 10 seconds
   useEffect(() => {
@@ -269,17 +273,7 @@ export function CanvasViewer({
               style={{
                 imageRendering: zoom > 1.5 ? 'pixelated' : 'auto',
               }}
-              onLoad={() => {
-                console.log('[CanvasViewer] Image loaded successfully, src length:', imageUrl?.length);
-                setImageLoaded(true);
-              }}
-              onError={(e) => {
-                console.error('[CanvasViewer] Image failed to load:', {
-                  srcLength: imageUrl?.length,
-                  srcPrefix: imageUrl?.substring(0, 100),
-                  error: e,
-                });
-              }}
+              onLoad={() => setImageLoaded(true)}
               draggable={false}
             />
 

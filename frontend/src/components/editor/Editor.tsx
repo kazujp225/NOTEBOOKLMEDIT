@@ -58,11 +58,6 @@ export function Editor({ projectId }: EditorProps) {
 
       try {
         const loadedProject = await loadProjectWithImages(projectId);
-        console.log('[Editor] loadedProject:', {
-          pages: loadedProject?.pages.length,
-          firstPageImageLength: loadedProject?.pages[0]?.imageDataUrl?.length,
-          firstPageImagePrefix: loadedProject?.pages[0]?.imageDataUrl?.substring(0, 80),
-        });
         if (loadedProject) {
           setProject(loadedProject);
 
