@@ -605,12 +605,15 @@ export function CanvasViewer({
           <button
             onClick={() => { setMode('select'); onOverlaySelect?.(null); setEditingOverlayId(null); }}
             className={cn(
-              'w-8 h-8 flex items-center justify-center rounded-full transition-colors',
-              mode === 'select' ? 'bg-gray-200 text-gray-900' : 'hover:bg-gray-100 text-gray-500'
+              'flex items-center justify-center rounded-full transition-colors',
+              mode === 'select'
+                ? 'bg-gray-200 text-gray-900 px-3 h-8 gap-1.5'
+                : 'hover:bg-gray-100 text-gray-500 w-8 h-8'
             )}
             aria-label="選択モード"
           >
             <MousePointer className="w-4 h-4" />
+            {mode === 'select' && <span className="text-xs font-medium">選択</span>}
           </button>
         </Tooltip>
 
@@ -618,12 +621,15 @@ export function CanvasViewer({
           <button
             onClick={() => { setMode('draw'); onOverlaySelect?.(null); setEditingOverlayId(null); }}
             className={cn(
-              'w-8 h-8 flex items-center justify-center rounded-full transition-colors',
-              mode === 'draw' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 text-gray-500'
+              'flex items-center justify-center rounded-full transition-colors',
+              mode === 'draw'
+                ? 'bg-blue-500 text-white px-3 h-8 gap-1.5'
+                : 'hover:bg-gray-100 text-gray-500 w-8 h-8'
             )}
             aria-label="範囲選択"
           >
             <Square className="w-4 h-4" />
+            {mode === 'draw' && <span className="text-xs font-medium">範囲選択</span>}
           </button>
         </Tooltip>
 
@@ -631,12 +637,15 @@ export function CanvasViewer({
           <button
             onClick={() => { setMode('text'); onOverlaySelect?.(null); setEditingOverlayId(null); }}
             className={cn(
-              'w-8 h-8 flex items-center justify-center rounded-full transition-colors',
-              mode === 'text' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 text-gray-500'
+              'flex items-center justify-center rounded-full transition-colors',
+              mode === 'text'
+                ? 'bg-green-500 text-white px-3 h-8 gap-1.5'
+                : 'hover:bg-gray-100 text-gray-500 w-8 h-8'
             )}
             aria-label="テキスト追加"
           >
             <Type className="w-4 h-4" />
+            {mode === 'text' && <span className="text-xs font-medium">テキスト</span>}
           </button>
         </Tooltip>
 

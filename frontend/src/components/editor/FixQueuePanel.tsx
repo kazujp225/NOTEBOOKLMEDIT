@@ -112,6 +112,9 @@ interface FixQueuePanelProps {
   regionPreviewUrl?: string;
   onDeleteIssue?: (issueId: string) => void;
   onRerunOcr?: (issueId: string) => void;
+  onUpdateOcrText?: (issueId: string, text: string) => void;
+  onBatchApply?: (prompt: string, pageNumbers: 'all' | number[]) => Promise<void>;
+  totalPages?: number;
 }
 
 // Toolbar button component
@@ -259,6 +262,9 @@ export function FixQueuePanel({
   regionPreviewUrl,
   onDeleteIssue,
   onRerunOcr,
+  onUpdateOcrText,
+  onBatchApply,
+  totalPages = 1,
 }: FixQueuePanelProps) {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedCandidateIndex, setSelectedCandidateIndex] = useState<number | null>(null);
@@ -289,6 +295,11 @@ export function FixQueuePanel({
   const [fontAccordionOpen, setFontAccordionOpen] = useState(false);
   const [issueListOpen, setIssueListOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Batch operation state
+  const [batchPrompt, setBatchPrompt] = useState('');
+  const [isBatchApplying, setIsBatchApplying] = useState(false);
+  const [batchTarget, setBatchTarget] = useState<'all' | 'current'>('all');
 
   // Progress calculations
   const resolvedCount = issues.filter(
@@ -392,6 +403,17 @@ export function FixQueuePanel({
     setSelectedCandidateIndex(null);
   };
 
+  const handleBatchApply = async () => {
+    if (!batchPrompt.trim() || !onBatchApply) return;
+    setIsBatchApplying(true);
+    try {
+      await onBatchApply(batchPrompt.trim(), 'all');
+      setBatchPrompt('');
+    } finally {
+      setIsBatchApplying(false);
+    }
+  };
+
   // Empty state
   if (!currentIssue) {
     return (
@@ -404,68 +426,114 @@ export function FixQueuePanel({
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-          {totalCount === 0 ? (
-            <>
-              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-5">
-                <Target className="w-8 h-8 text-gray-400" />
-              </div>
-              <h3 className="text-base font-semibold text-gray-900 mb-1">
-                修正箇所を選択
-              </h3>
-              <p className="text-sm text-gray-500 mb-8 leading-relaxed">
-                左の画像上でドラッグして<br />
-                修正したい箇所を選択してください
-              </p>
-
-              {/* Quick guide */}
-              <div className="w-full space-y-1.5">
-                {[
-                  { step: 1, title: '範囲を選択', desc: 'ドラッグで囲む', active: true },
-                  { step: 2, title: 'テキストを編集', desc: '文字化けを修正', active: false },
-                  { step: 3, title: 'スタイルを調整', desc: 'フォント・色など', active: false },
-                  { step: 4, title: '適用', desc: '修正を反映', active: false },
-                ].map(({ step, title, desc, active }) => (
-                  <div
-                    key={step}
-                    className={cn(
-                      'flex items-center gap-3 p-3 rounded-lg text-left',
-                      active ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
-                    )}
-                  >
-                    <div className={cn(
-                      'w-7 h-7 rounded-md flex items-center justify-center text-xs font-semibold flex-shrink-0',
-                      active ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
-                    )}>
-                      {step}
-                    </div>
-                    <div>
-                      <p className={cn('text-sm font-medium', active ? 'text-gray-900' : 'text-gray-500')}>
-                        {title}
-                      </p>
-                      <p className="text-xs text-gray-400">{desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mb-5">
-                <CheckCircle2 className="w-8 h-8 text-green-600" />
-              </div>
-              <h3 className="text-base font-semibold text-gray-900 mb-1">
-                すべて完了！
-              </h3>
-              <p className="text-sm text-gray-500 mb-6">
-                {resolvedCount}件の修正が完了しました
-              </p>
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 w-full">
-                <p className="text-sm text-gray-700">
-                  右上の「書き出し」からPDFを保存できます
+        <div className="flex-1 flex flex-col p-6 overflow-y-auto scrollbar-thin">
+          <div className="flex flex-col items-center text-center mb-6">
+            {totalCount === 0 ? (
+              <>
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-5">
+                  <Target className="w-8 h-8 text-gray-400" />
+                </div>
+                <h3 className="text-base font-semibold text-gray-900 mb-1">
+                  修正箇所を選択
+                </h3>
+                <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                  左の画像上でドラッグして<br />
+                  修正したい箇所を選択してください
                 </p>
+
+                {/* Quick guide */}
+                <div className="w-full space-y-1.5">
+                  {[
+                    { step: 1, title: '範囲を選択', desc: 'ドラッグで囲む', active: true },
+                    { step: 2, title: 'テキストを編集', desc: '文字化けを修正', active: false },
+                    { step: 3, title: 'スタイルを調整', desc: 'フォント・色など', active: false },
+                    { step: 4, title: '適用', desc: '修正を反映', active: false },
+                  ].map(({ step, title, desc, active }) => (
+                    <div
+                      key={step}
+                      className={cn(
+                        'flex items-center gap-3 p-3 rounded-lg text-left',
+                        active ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
+                      )}
+                    >
+                      <div className={cn(
+                        'w-7 h-7 rounded-md flex items-center justify-center text-xs font-semibold flex-shrink-0',
+                        active ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
+                      )}>
+                        {step}
+                      </div>
+                      <div>
+                        <p className={cn('text-sm font-medium', active ? 'text-gray-900' : 'text-gray-500')}>
+                          {title}
+                        </p>
+                        <p className="text-xs text-gray-400">{desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mb-5">
+                  <CheckCircle2 className="w-8 h-8 text-green-600" />
+                </div>
+                <h3 className="text-base font-semibold text-gray-900 mb-1">
+                  すべて完了！
+                </h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  {resolvedCount}件の修正が完了しました
+                </p>
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 w-full">
+                  <p className="text-sm text-gray-700">
+                    右上の「書き出し」からPDFを保存できます
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Batch Operations */}
+          {onBatchApply && (
+            <div className="mt-auto pt-4 border-t border-gray-200 space-y-3">
+              <div className="flex items-center gap-2 mb-2">
+                <PaintBucket className="w-4 h-4 text-purple-500" />
+                <h3 className="text-sm font-semibold text-gray-900">一括編集</h3>
               </div>
-            </>
+              <p className="text-xs text-gray-500">
+                全ページに対してAIで一括編集を実行します（{totalPages}ページ × 10クレジット）
+              </p>
+              <textarea
+                value={batchPrompt}
+                onChange={(e) => setBatchPrompt(e.target.value)}
+                placeholder={"例: 背景色を青から赤に変更\n例: すべてのテキストの色を白にして\n例: ヘッダーのロゴを大きくして\n例: 全体のコントラストを上げて"}
+                className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white resize-none"
+                rows={3}
+                disabled={isBatchApplying}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && batchPrompt.trim()) {
+                    handleBatchApply();
+                  }
+                }}
+              />
+              <button
+                onClick={handleBatchApply}
+                disabled={isBatchApplying || !batchPrompt.trim()}
+                className="w-full py-2.5 text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                {isBatchApplying ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    一括処理中...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4" />
+                    全ページに適用
+                  </>
+                )}
+              </button>
+              <p className="text-xs text-gray-400 text-center">⌘+Enter で実行</p>
+            </div>
           )}
         </div>
       </aside>
@@ -679,11 +747,11 @@ export function FixQueuePanel({
             ) : (
               /* Text mode: unified edit input */
               <>
-                {/* OCR Text */}
-                {currentIssue.ocr_text && (
+                {/* OCR Text (editable) */}
+                {currentIssue.ocr_text !== undefined && (
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-xs font-medium text-gray-500">検出テキスト</label>
+                      <label className="text-xs font-medium text-gray-500">検出テキスト（クリックで編集可）</label>
                       <button
                         onClick={() => setCustomText(currentIssue.ocr_text || '')}
                         className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
@@ -692,9 +760,13 @@ export function FixQueuePanel({
                         コピー
                       </button>
                     </div>
-                    <div className="p-2.5 bg-gray-50 rounded-md border border-gray-200 text-sm text-gray-700 font-mono">
-                      {currentIssue.ocr_text}
-                    </div>
+                    <input
+                      type="text"
+                      value={currentIssue.ocr_text || ''}
+                      onChange={(e) => onUpdateOcrText?.(currentIssue.id, e.target.value)}
+                      className="w-full p-2.5 bg-gray-50 rounded-md border border-gray-200 text-sm text-gray-700 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white"
+                      placeholder="OCR結果をここで修正..."
+                    />
                   </div>
                 )}
 
