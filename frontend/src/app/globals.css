@@ -246,6 +246,34 @@ body {
     @apply text-red-500 hover:text-white hover:bg-red-500;
   }
 
+  /* Text Overlay Box */
+  .text-overlay-box {
+    @apply absolute border border-transparent cursor-move transition-shadow duration-150;
+    z-index: 15;
+  }
+
+  .text-overlay-box:hover {
+    @apply border-green-400/50;
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.3);
+  }
+
+  .text-overlay-box-selected {
+    @apply border-green-500 border-solid;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.3);
+  }
+
+  .text-overlay-box-editing {
+    @apply border-green-500 border-dashed;
+  }
+
+  .text-overlay-box-selected .selection-handle {
+    @apply border-green-500;
+  }
+
+  .text-overlay-box-selected .selection-handle:hover {
+    @apply bg-green-500 border-green-600;
+  }
+
   /* Thumbnail */
   .thumbnail {
     @apply relative rounded-lg overflow-hidden cursor-pointer transition-all duration-150;

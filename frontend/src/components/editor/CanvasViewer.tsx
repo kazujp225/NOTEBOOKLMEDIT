@@ -1,9 +1,12 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X, Trash2, Move, Copy, Shapes, Check, AlertCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X, Trash2, Move, Copy, Shapes, Check, AlertCircle, AlertTriangle, Loader2, Type } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { TextOverlayBox, type ResizeHandle } from './TextOverlayBox';
+import { TextOverlayToolbar } from './TextOverlayToolbar';
+import type { TextOverlay } from '@/lib/store';
 
 export interface BBox {
   x: number;
@@ -38,6 +41,13 @@ interface CanvasViewerProps {
   zoom: number;
   onZoomChange: (zoom: number) => void;
   disabled?: boolean;
+  // Text overlay props
+  textOverlays?: TextOverlay[];
+  selectedOverlayId?: string | null;
+  onOverlaySelect?: (id: string | null) => void;
+  onOverlayCreate?: (bbox: BBox) => void;
+  onOverlayUpdate?: (id: string, updates: Partial<TextOverlay>) => void;
+  onOverlayDelete?: (id: string) => void;
 }
 
 export function CanvasViewer({
@@ -52,6 +62,12 @@ export function CanvasViewer({
   zoom,
   onZoomChange,
   disabled = false,
+  textOverlays = [],
+  selectedOverlayId = null,
+  onOverlaySelect,
+  onOverlayCreate,
+  onOverlayUpdate,
+  onOverlayDelete,
 }: CanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -61,12 +77,26 @@ export function CanvasViewer({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   // ROI selection mode
-  const [mode, setMode] = useState<'select' | 'draw'>('draw'); // Default to draw mode
+  const [mode, setMode] = useState<'select' | 'draw' | 'text'>('draw');
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
   const [drawEnd, setDrawEnd] = useState({ x: 0, y: 0 });
   const [showHint, setShowHint] = useState(true);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Text overlay interaction state
+  const [editingOverlayId, setEditingOverlayId] = useState<string | null>(null);
+  const [draggingOverlay, setDraggingOverlay] = useState<{
+    id: string;
+    startBbox: BBox;
+    startMouse: { x: number; y: number };
+  } | null>(null);
+  const [resizingOverlay, setResizingOverlay] = useState<{
+    id: string;
+    handle: ResizeHandle;
+    startBbox: BBox;
+    startMouse: { x: number; y: number };
+  } | null>(null);
 
   // Update container size on resize
   useEffect(() => {
@@ -163,9 +193,48 @@ export function CanvasViewer({
     [zoom, onZoomChange]
   );
 
+  // Overlay drag/resize handlers
+  const handleOverlayDragStart = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const overlay = textOverlays.find((o) => o.id === id);
+    if (!overlay) return;
+    const mousePos = screenToImage(e.clientX, e.clientY);
+    setDraggingOverlay({
+      id,
+      startBbox: { ...overlay.bbox },
+      startMouse: mousePos,
+    });
+  }, [textOverlays]);
+
+  const handleOverlayResizeStart = useCallback((id: string, handle: ResizeHandle, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const overlay = textOverlays.find((o) => o.id === id);
+    if (!overlay) return;
+    const mousePos = screenToImage(e.clientX, e.clientY);
+    setResizingOverlay({
+      id,
+      handle,
+      startBbox: { ...overlay.bbox },
+      startMouse: mousePos,
+    });
+  }, [textOverlays]);
+
   // Mouse handlers
   const handleMouseDown = (e: React.MouseEvent) => {
     if (disabled) return;
+
+    // In text mode, clicking empty space deselects overlay and starts drawing new text box
+    if (mode === 'text' && e.button === 0 && !e.altKey) {
+      e.preventDefault();
+      onOverlaySelect?.(null);
+      setEditingOverlayId(null);
+      const pos = screenToImage(e.clientX, e.clientY);
+      setIsDrawing(true);
+      setDrawStart(pos);
+      setDrawEnd(pos);
+      return;
+    }
+
     if (mode === 'draw' && e.button === 0) {
       e.preventDefault();
       const pos = screenToImage(e.clientX, e.clientY);
@@ -177,11 +246,47 @@ export function CanvasViewer({
       e.preventDefault();
       setIsDragging(true);
       setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+    } else if (mode === 'select' && e.button === 0) {
+      // Deselect overlay when clicking empty space in select mode
+      onOverlaySelect?.(null);
+      setEditingOverlayId(null);
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDrawing) {
+    if (draggingOverlay && onOverlayUpdate) {
+      const mousePos = screenToImage(e.clientX, e.clientY);
+      const dx = mousePos.x - draggingOverlay.startMouse.x;
+      const dy = mousePos.y - draggingOverlay.startMouse.y;
+      const newX = Math.max(0, Math.min(pageWidth - draggingOverlay.startBbox.width, draggingOverlay.startBbox.x + dx));
+      const newY = Math.max(0, Math.min(pageHeight - draggingOverlay.startBbox.height, draggingOverlay.startBbox.y + dy));
+      onOverlayUpdate(draggingOverlay.id, {
+        bbox: {
+          x: Math.round(newX),
+          y: Math.round(newY),
+          width: draggingOverlay.startBbox.width,
+          height: draggingOverlay.startBbox.height,
+        },
+      });
+    } else if (resizingOverlay && onOverlayUpdate) {
+      const mousePos = screenToImage(e.clientX, e.clientY);
+      const dx = mousePos.x - resizingOverlay.startMouse.x;
+      const dy = mousePos.y - resizingOverlay.startMouse.y;
+      const { startBbox, handle } = resizingOverlay;
+      let { x, y, width, height } = startBbox;
+
+      const MIN_W = 20;
+      const MIN_H = 10;
+
+      if (handle.includes('e')) { width = Math.max(MIN_W, width + dx); }
+      if (handle.includes('w')) { x = x + dx; width = Math.max(MIN_W, width - dx); if (width === MIN_W) x = startBbox.x + startBbox.width - MIN_W; }
+      if (handle.includes('s')) { height = Math.max(MIN_H, height + dy); }
+      if (handle.includes('n')) { y = y + dy; height = Math.max(MIN_H, height - dy); if (height === MIN_H) y = startBbox.y + startBbox.height - MIN_H; }
+
+      onOverlayUpdate(resizingOverlay.id, {
+        bbox: { x: Math.round(Math.max(0, x)), y: Math.round(Math.max(0, y)), width: Math.round(width), height: Math.round(height) },
+      });
+    } else if (isDrawing) {
       const pos = screenToImage(e.clientX, e.clientY);
       setDrawEnd(pos);
     } else if (isDragging) {
@@ -193,6 +298,14 @@ export function CanvasViewer({
   };
 
   const handleMouseUp = (e: React.MouseEvent) => {
+    if (draggingOverlay) {
+      setDraggingOverlay(null);
+      return;
+    }
+    if (resizingOverlay) {
+      setResizingOverlay(null);
+      return;
+    }
     if (isDrawing) {
       setIsDrawing(false);
 
@@ -202,14 +315,26 @@ export function CanvasViewer({
       const width = Math.abs(drawEnd.x - drawStart.x);
       const height = Math.abs(drawEnd.y - drawStart.y);
 
-      // Only create if area is significant
-      if (width > 10 && height > 10 && onCreateIssue) {
-        onCreateIssue({
-          x: Math.round(x),
-          y: Math.round(y),
-          width: Math.round(width),
-          height: Math.round(height),
-        }, 'text');
+      if (mode === 'text') {
+        // Create text overlay
+        if (width > 20 && height > 10 && onOverlayCreate) {
+          onOverlayCreate({
+            x: Math.round(x),
+            y: Math.round(y),
+            width: Math.round(width),
+            height: Math.round(height),
+          });
+        }
+      } else {
+        // Create issue (draw mode)
+        if (width > 10 && height > 10 && onCreateIssue) {
+          onCreateIssue({
+            x: Math.round(x),
+            y: Math.round(y),
+            width: Math.round(width),
+            height: Math.round(height),
+          }, 'text');
+        }
       }
     }
     setIsDragging(false);
@@ -230,9 +355,6 @@ export function CanvasViewer({
     return 'issue-box issue-box-unfixed';
   };
 
-  // Note: Auto-scroll to selected issue has been disabled to prevent unwanted camera jumps
-  // Users can manually pan to the issue if needed
-
   // Calculate drawing rect
   const getDrawingRect = () => {
     if (!isDrawing) return null;
@@ -244,6 +366,7 @@ export function CanvasViewer({
   };
 
   const drawingRect = getDrawingRect();
+  const selectedOverlay = textOverlays.find((o) => o.id === selectedOverlayId);
 
   return (
     <div className="flex-1 flex flex-col bg-gray-100 min-w-0 relative">
@@ -253,13 +376,18 @@ export function CanvasViewer({
         className={cn(
           'relative flex-1 overflow-hidden',
           isDragging && 'cursor-grabbing',
-          mode === 'draw' && !isDragging && 'cursor-crosshair'
+          (mode === 'draw' || mode === 'text') && !isDragging && 'cursor-crosshair'
         )}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={() => {
+          if (isDrawing) setIsDrawing(false);
+          setIsDragging(false);
+          if (draggingOverlay) setDraggingOverlay(null);
+          if (resizingOverlay) setResizingOverlay(null);
+        }}
       >
         {/* Centered container */}
         <div
@@ -300,7 +428,6 @@ export function CanvasViewer({
                 const isSelected = issue.id === selectedIssueId;
                 const isCorrected = issue.status === 'corrected';
                 const isSkipped = issue.status === 'skipped';
-                const boxScale = effectiveZoom;
                 const badgeSize = Math.max(16, Math.min(24, 20 / zoom));
                 return (
                   <div
@@ -402,10 +529,33 @@ export function CanvasViewer({
                 );
               })}
 
+            {/* Text overlays */}
+            {imageLoaded && textOverlays.map((overlay) => (
+              <TextOverlayBox
+                key={overlay.id}
+                overlay={overlay}
+                effectiveZoom={effectiveZoom}
+                isSelected={overlay.id === selectedOverlayId}
+                isEditing={overlay.id === editingOverlayId}
+                onSelect={(id) => {
+                  onOverlaySelect?.(id);
+                }}
+                onDoubleClick={(id) => setEditingOverlayId(id)}
+                onTextChange={(id, text) => onOverlayUpdate?.(id, { text })}
+                onBlur={() => setEditingOverlayId(null)}
+                onDelete={(id) => onOverlayDelete?.(id)}
+                onResizeStart={handleOverlayResizeStart}
+                onDragStart={handleOverlayDragStart}
+              />
+            ))}
+
             {/* Drawing rectangle */}
             {drawingRect && (
               <div
-                className="absolute border-2 border-blue-500 bg-blue-500/20 pointer-events-none"
+                className={cn(
+                  'absolute border-2 pointer-events-none',
+                  mode === 'text' ? 'border-green-500 bg-green-500/20' : 'border-blue-500 bg-blue-500/20'
+                )}
                 style={{
                   left: drawingRect.x * effectiveZoom,
                   top: drawingRect.y * effectiveZoom,
@@ -439,12 +589,21 @@ export function CanvasViewer({
         </div>
       </div>
 
+      {/* Text overlay style toolbar */}
+      {selectedOverlay && !editingOverlayId && onOverlayUpdate && onOverlayDelete && (
+        <TextOverlayToolbar
+          overlay={selectedOverlay}
+          onUpdate={(updates) => onOverlayUpdate(selectedOverlay.id, updates)}
+          onDelete={() => onOverlayDelete(selectedOverlay.id)}
+        />
+      )}
+
       {/* Toolbar */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white/95 backdrop-blur rounded-full px-2 py-1.5 shadow-lg border border-gray-200">
         {/* Mode toggle */}
         <Tooltip content="選択モード (既存のIssueをクリック)">
           <button
-            onClick={() => setMode('select')}
+            onClick={() => { setMode('select'); onOverlaySelect?.(null); setEditingOverlayId(null); }}
             className={cn(
               'w-8 h-8 flex items-center justify-center rounded-full transition-colors',
               mode === 'select' ? 'bg-gray-200 text-gray-900' : 'hover:bg-gray-100 text-gray-500'
@@ -457,7 +616,7 @@ export function CanvasViewer({
 
         <Tooltip content="範囲選択モード (新規Issue作成)">
           <button
-            onClick={() => setMode('draw')}
+            onClick={() => { setMode('draw'); onOverlaySelect?.(null); setEditingOverlayId(null); }}
             className={cn(
               'w-8 h-8 flex items-center justify-center rounded-full transition-colors',
               mode === 'draw' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 text-gray-500'
@@ -465,6 +624,19 @@ export function CanvasViewer({
             aria-label="範囲選択"
           >
             <Square className="w-4 h-4" />
+          </button>
+        </Tooltip>
+
+        <Tooltip content="テキスト追加モード (T)">
+          <button
+            onClick={() => { setMode('text'); onOverlaySelect?.(null); setEditingOverlayId(null); }}
+            className={cn(
+              'w-8 h-8 flex items-center justify-center rounded-full transition-colors',
+              mode === 'text' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 text-gray-500'
+            )}
+            aria-label="テキスト追加"
+          >
+            <Type className="w-4 h-4" />
           </button>
         </Tooltip>
 
@@ -552,6 +724,14 @@ export function CanvasViewer({
         <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 text-white text-sm font-medium rounded-full shadow-lg flex items-center gap-2 bg-blue-600">
           <Square className="w-4 h-4" />
           ドラッグして修正範囲を選択
+        </div>
+      )}
+
+      {/* Top mode indicator for text mode */}
+      {mode === 'text' && !disabled && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 text-white text-sm font-medium rounded-full shadow-lg flex items-center gap-2 bg-green-600">
+          <Type className="w-4 h-4" />
+          ドラッグしてテキストボックスを配置
         </div>
       )}
     </div>

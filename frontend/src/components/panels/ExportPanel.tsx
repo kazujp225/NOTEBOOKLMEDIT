@@ -10,7 +10,8 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAppStore, type PageData } from '@/lib/store';
+import { useAppStore, type PageData, type TextOverlay } from '@/lib/store';
+import { renderOverlaysOntoImage } from '@/lib/pdf-utils';
 
 interface ExportPanelProps {
   projectId: string;
@@ -83,6 +84,8 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
         unit: 'px',
       });
 
+      const textOverlays = projectMeta?.textOverlays || [];
+
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
 
@@ -90,12 +93,19 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
           doc.addPage();
         }
 
+        // Render text overlays onto the page image if any exist
+        const pageOverlays = textOverlays.filter((o) => o.pageNumber === page.pageNumber);
+        let finalImageDataUrl = page.imageDataUrl;
+        if (pageOverlays.length > 0) {
+          finalImageDataUrl = await renderOverlaysOntoImage(page.imageDataUrl, pageOverlays);
+        }
+
         // Add page image
         const imgWidth = doc.internal.pageSize.getWidth();
         const imgHeight = (page.height / page.width) * imgWidth;
 
         doc.addImage(
-          page.imageDataUrl,
+          finalImageDataUrl,
           'PNG',
           0,
           0,

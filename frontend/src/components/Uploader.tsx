@@ -133,6 +133,7 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
           thumbnailDataUrl: page.thumbnailDataUrl,
         })),
         issues: [],
+        textOverlays: [],
         status: 'ready',
         createdAt: now,
         updatedAt: now,

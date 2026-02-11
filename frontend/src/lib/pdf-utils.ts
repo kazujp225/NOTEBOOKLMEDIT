@@ -319,3 +319,103 @@ export function applyTextOverlay(
     img.src = imageDataUrl;
   });
 }
+
+/**
+ * Render text overlays onto a page image for PDF export.
+ */
+export function renderOverlaysOntoImage(
+  imageDataUrl: string,
+  overlays: {
+    bbox: { x: number; y: number; width: number; height: number };
+    text: string;
+    fontSize: number;
+    fontFamily: string;
+    fontWeight: 'normal' | 'bold';
+    fontStyle: 'normal' | 'italic';
+    textDecoration: 'none' | 'underline';
+    textAlign: 'left' | 'center' | 'right';
+    color: string;
+    backgroundColor: string;
+  }[]
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      for (const overlay of overlays) {
+        // Draw background if not transparent
+        if (overlay.backgroundColor && overlay.backgroundColor !== 'transparent') {
+          ctx.fillStyle = overlay.backgroundColor;
+          ctx.fillRect(overlay.bbox.x, overlay.bbox.y, overlay.bbox.width, overlay.bbox.height);
+        }
+
+        // Draw text
+        const font = `${overlay.fontStyle} ${overlay.fontWeight} ${overlay.fontSize}px ${overlay.fontFamily}`;
+        ctx.font = font;
+        ctx.fillStyle = overlay.color;
+        ctx.textBaseline = 'top';
+
+        // Simple word wrap
+        const padding = 4;
+        const maxWidth = overlay.bbox.width - padding * 2;
+        const lines = wrapText(ctx, overlay.text, maxWidth);
+        const lineHeight = overlay.fontSize * 1.2;
+        let y = overlay.bbox.y + padding;
+
+        for (const line of lines) {
+          const metrics = ctx.measureText(line);
+          let x: number;
+          switch (overlay.textAlign) {
+            case 'left': x = overlay.bbox.x + padding; break;
+            case 'right': x = overlay.bbox.x + overlay.bbox.width - metrics.width - padding; break;
+            default: x = overlay.bbox.x + (overlay.bbox.width - metrics.width) / 2; break;
+          }
+          ctx.fillText(line, x, y);
+
+          if (overlay.textDecoration === 'underline') {
+            ctx.strokeStyle = overlay.color;
+            ctx.lineWidth = Math.max(1, overlay.fontSize / 16);
+            ctx.beginPath();
+            ctx.moveTo(x, y + overlay.fontSize);
+            ctx.lineTo(x + metrics.width, y + overlay.fontSize);
+            ctx.stroke();
+          }
+
+          y += lineHeight;
+        }
+      }
+
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = reject;
+    img.src = imageDataUrl;
+  });
+}
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const lines: string[] = [];
+  const paragraphs = text.split('\n');
+
+  for (const paragraph of paragraphs) {
+    let currentLine = '';
+
+    for (const char of paragraph) {
+      const testLine = currentLine + char;
+      const metrics = ctx.measureText(testLine);
+      if (metrics.width > maxWidth && currentLine.length > 0) {
+        lines.push(currentLine);
+        currentLine = char;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    lines.push(currentLine);
+  }
+
+  return lines;
+}

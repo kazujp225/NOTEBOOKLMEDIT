@@ -10,7 +10,7 @@ import { CanvasViewer } from './CanvasViewer';
 import { FixQueuePanel, type AIInpaintOptions, type TextStyle } from './FixQueuePanel';
 import { ExportPanel } from '@/components/panels/ExportPanel';
 import { useToast } from '@/components/ui/Toast';
-import { useAppStore, generateId, type Issue, type BBox, type PageData, type ProjectWithImages } from '@/lib/store';
+import { useAppStore, generateId, type Issue, type BBox, type PageData, type ProjectWithImages, type TextOverlay } from '@/lib/store';
 import { saveImage, getImage } from '@/lib/image-store';
 
 interface EditorProps {
@@ -30,6 +30,9 @@ export function Editor({ projectId }: EditorProps) {
   const addIssue = useAppStore((state) => state.addIssue);
   const updateIssue = useAppStore((state) => state.updateIssue);
   const deleteIssue = useAppStore((state) => state.deleteIssue);
+  const addTextOverlay = useAppStore((state) => state.addTextOverlay);
+  const updateTextOverlay = useAppStore((state) => state.updateTextOverlay);
+  const deleteTextOverlay = useAppStore((state) => state.deleteTextOverlay);
 
   // Loaded project with images
   const [project, setProject] = useState<ProjectWithImages | null>(null);
@@ -47,6 +50,7 @@ export function Editor({ projectId }: EditorProps) {
   const [redoStack, setRedoStack] = useState<{ issueId: string; pageNumber: number; previousImageDataUrl: string }[]>([]);
   const [jobStatus, setJobStatus] = useState<{ type: 'ocr' | 'generate' | 'export'; message: string } | null>(null);
   const [regionPreviewUrl, setRegionPreviewUrl] = useState<string | null>(null);
+  const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
 
   // Load project images from IndexedDB
   useEffect(() => {
@@ -85,12 +89,12 @@ export function Editor({ projectId }: EditorProps) {
     loadProject();
   }, [projectId, projectMeta, loadProjectWithImages, addToast]);
 
-  // Sync issues from store when they change
+  // Sync issues and overlays from store when they change
   useEffect(() => {
     if (project && projectMeta) {
-      setProject((prev) => prev ? { ...prev, issues: projectMeta.issues } : null);
+      setProject((prev) => prev ? { ...prev, issues: projectMeta.issues, textOverlays: projectMeta.textOverlays || [] } : null);
     }
-  }, [projectMeta?.issues]);
+  }, [projectMeta?.issues, projectMeta?.textOverlays]);
 
   // Memoized values
   const issues = useMemo(() => project?.issues || [], [project?.issues]);
@@ -109,6 +113,11 @@ export function Editor({ projectId }: EditorProps) {
   const resolvedCount = useMemo(
     () => issues.filter((i) => i.status === 'corrected' || i.status === 'skipped').length,
     [issues]
+  );
+
+  const pageOverlays = useMemo(
+    () => (project?.textOverlays || []).filter((o) => o.pageNumber === currentPageNumber),
+    [project?.textOverlays, currentPageNumber]
   );
 
   // Generate region preview when issue selection changes
@@ -545,6 +554,51 @@ export function Editor({ projectId }: EditorProps) {
     addToast('success', '選択箇所を削除しました');
   }, [projectId, selectedIssue?.id, deleteIssue, addToast]);
 
+  // Text overlay handlers
+  const handleOverlayCreate = useCallback((bbox: BBox) => {
+    const overlay: TextOverlay = {
+      id: generateId(),
+      pageNumber: currentPageNumber,
+      bbox,
+      text: 'テキストを入力',
+      fontSize: Math.round(Math.min(bbox.height * 0.7, 48)),
+      fontFamily: 'Noto Sans JP, sans-serif',
+      fontWeight: 'normal',
+      fontStyle: 'normal',
+      textDecoration: 'none',
+      textAlign: 'center',
+      color: '#000000',
+      backgroundColor: 'transparent',
+    };
+    addTextOverlay(projectId, overlay);
+    setProject((prev) => prev ? {
+      ...prev,
+      textOverlays: [...(prev.textOverlays || []), overlay],
+    } : null);
+    setSelectedOverlayId(overlay.id);
+    addToast('success', 'テキストボックスを追加しました');
+  }, [projectId, currentPageNumber, addTextOverlay, addToast]);
+
+  const handleOverlayUpdate = useCallback((overlayId: string, updates: Partial<TextOverlay>) => {
+    updateTextOverlay(projectId, overlayId, updates);
+    setProject((prev) => prev ? {
+      ...prev,
+      textOverlays: (prev.textOverlays || []).map((o) =>
+        o.id === overlayId ? { ...o, ...updates } : o
+      ),
+    } : null);
+  }, [projectId, updateTextOverlay]);
+
+  const handleOverlayDelete = useCallback((overlayId: string) => {
+    deleteTextOverlay(projectId, overlayId);
+    setProject((prev) => prev ? {
+      ...prev,
+      textOverlays: (prev.textOverlays || []).filter((o) => o.id !== overlayId),
+    } : null);
+    if (selectedOverlayId === overlayId) setSelectedOverlayId(null);
+    addToast('success', 'テキストボックスを削除しました');
+  }, [projectId, selectedOverlayId, deleteTextOverlay, addToast]);
+
   // Re-run OCR on an existing issue
   const handleRerunOcr = useCallback(async (issueId: string) => {
     const issue = issues.find((i) => i.id === issueId);
@@ -768,6 +822,12 @@ export function Editor({ projectId }: EditorProps) {
             zoom={zoom}
             onZoomChange={setZoom}
             disabled={isApplying}
+            textOverlays={pageOverlays}
+            selectedOverlayId={selectedOverlayId}
+            onOverlaySelect={isApplying ? undefined : setSelectedOverlayId}
+            onOverlayCreate={isApplying ? undefined : handleOverlayCreate}
+            onOverlayUpdate={isApplying ? undefined : handleOverlayUpdate}
+            onOverlayDelete={isApplying ? undefined : handleOverlayDelete}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center bg-gray-100">

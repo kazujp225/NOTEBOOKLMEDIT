@@ -32,6 +32,21 @@ export interface Candidate {
   reason?: string;
 }
 
+export interface TextOverlay {
+  id: string;
+  pageNumber: number;
+  bbox: BBox;
+  text: string;
+  fontSize: number;
+  fontFamily: string;
+  fontWeight: 'normal' | 'bold';
+  fontStyle: 'normal' | 'italic';
+  textDecoration: 'none' | 'underline';
+  textAlign: 'left' | 'center' | 'right';
+  color: string;
+  backgroundColor: string;
+}
+
 // Page metadata (without image data)
 export interface PageMeta {
   pageNumber: number;
@@ -58,6 +73,7 @@ export interface Project {
   totalPages: number;
   pages: PageMeta[]; // Changed from PageData to PageMeta
   issues: Issue[];
+  textOverlays: TextOverlay[];
   status: 'uploading' | 'processing' | 'ready' | 'completed';
   createdAt: string;
   updatedAt: string;
@@ -85,6 +101,11 @@ interface AppState {
   addIssue: (projectId: string, issue: Issue) => void;
   updateIssue: (projectId: string, issueId: string, updates: Partial<Issue>) => void;
   deleteIssue: (projectId: string, issueId: string) => void;
+
+  // TextOverlay actions
+  addTextOverlay: (projectId: string, overlay: TextOverlay) => void;
+  updateTextOverlay: (projectId: string, overlayId: string, updates: Partial<TextOverlay>) => void;
+  deleteTextOverlay: (projectId: string, overlayId: string) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -118,6 +139,7 @@ export const useAppStore = create<AppState>()(
         const project: Project = {
           ...projectMeta,
           pages: pageMetas,
+          textOverlays: projectMeta.textOverlays || [],
         };
 
         set((state) => ({
@@ -176,6 +198,7 @@ export const useAppStore = create<AppState>()(
 
         return {
           ...project,
+          textOverlays: project.textOverlays || [],
           pages: pagesWithImages.filter((p): p is PageData => p !== null),
         };
       },
@@ -209,6 +232,41 @@ export const useAppStore = create<AppState>()(
               ? {
                   ...p,
                   issues: p.issues.filter((i) => i.id !== issueId),
+                  updatedAt: new Date().toISOString(),
+                }
+              : p
+          ),
+        })),
+
+      addTextOverlay: (projectId, overlay) =>
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === projectId
+              ? { ...p, textOverlays: [...(p.textOverlays || []), overlay], updatedAt: new Date().toISOString() }
+              : p
+          ),
+        })),
+
+      updateTextOverlay: (projectId, overlayId, updates) =>
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === projectId
+              ? {
+                  ...p,
+                  textOverlays: (p.textOverlays || []).map((o) => (o.id === overlayId ? { ...o, ...updates } : o)),
+                  updatedAt: new Date().toISOString(),
+                }
+              : p
+          ),
+        })),
+
+      deleteTextOverlay: (projectId, overlayId) =>
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === projectId
+              ? {
+                  ...p,
+                  textOverlays: (p.textOverlays || []).filter((o) => o.id !== overlayId),
                   updatedAt: new Date().toISOString(),
                 }
               : p
