@@ -660,6 +660,100 @@ export function Editor({ projectId }: EditorProps) {
     }
   }, [issues, pages, projectId, updateIssue, addToast]);
 
+  // Update OCR text manually (when user edits detected text)
+  const handleUpdateOcrText = useCallback((issueId: string, text: string) => {
+    updateIssue(projectId, issueId, { ocrText: text });
+    setProject((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        issues: prev.issues.map((i) =>
+          i.id === issueId ? { ...i, ocrText: text } : i
+        ),
+      };
+    });
+    setSelectedIssue((prev) =>
+      prev?.id === issueId ? { ...prev, ocrText: text } : prev
+    );
+  }, [projectId, updateIssue]);
+
+  // Batch apply: process all pages with the same prompt via AI inpainting
+  const handleBatchApply = useCallback(async (prompt: string, pageNumbers: 'all' | number[]) => {
+    if (!project) return;
+
+    const targetPages = pageNumbers === 'all'
+      ? pages
+      : pages.filter((p) => pageNumbers.includes(p.pageNumber));
+
+    if (targetPages.length === 0) return;
+
+    setIsApplying(true);
+    addToast('success', `一括処理を開始: ${targetPages.length}ページ`);
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const page of targetPages) {
+      try {
+        const { inpaintImage } = await import('@/lib/gemini');
+        const { getImage, saveImage } = await import('@/lib/image-store');
+
+        const imageKey = `${projectId}/page-${page.pageNumber}`;
+        const imageBase64 = await getImage(imageKey);
+        if (!imageBase64) {
+          errorCount++;
+          continue;
+        }
+
+        // Full page mask
+        const mask = { x: 0, y: 0, width: 1, height: 1 };
+
+        const inpaintPrompt = `この画像全体に対して以下の編集を行ってください: ${prompt}。元のレイアウト・文字・構造を可能な限り維持しながら、指示された変更のみを適用してください。`;
+
+        const result = await inpaintImage({
+          imageBase64,
+          masks: [mask],
+          prompt: inpaintPrompt,
+          outputSize: '4K',
+        });
+
+        if (!result.success || !result.imageBase64) {
+          errorCount++;
+          continue;
+        }
+
+        // Save the new image
+        await saveImage(imageKey, result.imageBase64);
+
+        // Update local state
+        setProject((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            pages: prev.pages.map((p) =>
+              p.pageNumber === page.pageNumber
+                ? { ...p, imageDataUrl: result.imageBase64! }
+                : p
+            ),
+          };
+        });
+
+        successCount++;
+        addToast('success', `ページ ${page.pageNumber}/${targetPages.length} 完了`);
+      } catch (err) {
+        console.error(`Batch apply error on page ${page.pageNumber}:`, err);
+        errorCount++;
+      }
+    }
+
+    setIsApplying(false);
+    if (errorCount === 0) {
+      addToast('success', `一括処理完了: ${successCount}ページを更新しました`);
+    } else {
+      addToast('warning', `一括処理完了: ${successCount}ページ成功、${errorCount}ページ失敗`);
+    }
+  }, [project, pages, projectId, addToast]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -877,6 +971,9 @@ export function Editor({ projectId }: EditorProps) {
           regionPreviewUrl={regionPreviewUrl || undefined}
           onDeleteIssue={handleDeleteIssue}
           onRerunOcr={handleRerunOcr}
+          onUpdateOcrText={handleUpdateOcrText}
+          onBatchApply={handleBatchApply}
+          totalPages={pages.length}
         />
       </div>
 
