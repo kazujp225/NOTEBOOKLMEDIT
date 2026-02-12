@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Uploader } from '@/components/Uploader';
 import { Badge } from '@/components/ui/Badge';
@@ -896,7 +896,11 @@ const tabs: { id: TabId; label: string; icon: typeof Home }[] = [
 export default function HomePage() {
   const router = useRouter();
   const { user, isLoading: authLoading, signOut } = useAuth();
-  const projects = useAppStore((state) => state.projects);
+  const allProjects = useAppStore((state) => state.projects);
+  const projects = useMemo(
+    () => user ? allProjects.filter((p) => p.userId === user.id) : allProjects,
+    [allProjects, user]
+  );
   const deleteProject = useAppStore((state) => state.deleteProject);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>('home');

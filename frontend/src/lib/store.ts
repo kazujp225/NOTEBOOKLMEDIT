@@ -139,6 +139,9 @@ export const useAppStore = create<AppState>()(
       addProject: async (projectWithImages) => {
         const { pages, ...projectMeta } = projectWithImages;
 
+        // Get current user ID immediately
+        const currentUserId = await getCurrentUserId();
+
         // Save images to IndexedDB
         const pageMetas: PageMeta[] = [];
         for (const page of pages) {
@@ -163,6 +166,7 @@ export const useAppStore = create<AppState>()(
           pages: pageMetas,
           textOverlays: projectMeta.textOverlays || [],
           syncStatus: 'pending',
+          userId: currentUserId || undefined,
         };
 
         set((state) => ({
