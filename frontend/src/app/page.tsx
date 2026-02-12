@@ -19,6 +19,8 @@ import {
   validateApiKey,
   type CreditsInfo,
 } from '@/lib/gemini';
+import { checkAdminStatus } from '@/lib/admin';
+import { AdminTab } from '@/components/admin/AdminTab';
 import {
   FileText,
   Trash2,
@@ -43,6 +45,7 @@ import {
   TrendingDown,
   Plus,
   X,
+  Shield,
 } from 'lucide-react';
 
 // ============================================
@@ -899,7 +902,7 @@ function TermsTab() {
 // Main Page
 // ============================================
 
-type TabId = 'home' | 'usage' | 'settings' | 'terms';
+type TabId = 'home' | 'usage' | 'settings' | 'terms' | 'admin';
 
 const tabs: { id: TabId; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
@@ -920,14 +923,16 @@ export default function HomePage() {
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>('home');
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useSync(user?.id);
 
   useEffect(() => { setIsLoadingProjects(false); }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) { setIsAdmin(false); return; }
     getCreditsInfo().then((info) => { if (info) setCreditBalance(info.balance); });
+    checkAdminStatus().then(({ isAdmin }) => setIsAdmin(isAdmin));
   }, [user]);
 
   const handleUploadComplete = (projectId: string) => router.push(`/projects/${projectId}`);
@@ -998,6 +1003,20 @@ export default function HomePage() {
               </button>
             );
           })}
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('admin')}
+              className={cn(
+                'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-colors',
+                activeTab === 'admin'
+                  ? 'bg-gray-100 text-gray-900 font-medium'
+                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+              )}
+            >
+              <Shield className="w-4 h-4" />
+              Admin
+            </button>
+          )}
         </nav>
 
         {/* User */}
@@ -1030,6 +1049,7 @@ export default function HomePage() {
           {activeTab === 'usage' && <UsageTab />}
           {activeTab === 'settings' && <SettingsTab />}
           {activeTab === 'terms' && <TermsTab />}
+          {activeTab === 'admin' && isAdmin && <AdminTab />}
         </div>
       </main>
     </div>

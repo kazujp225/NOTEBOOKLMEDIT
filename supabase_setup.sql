@@ -322,6 +322,20 @@ GRANT EXECUTE ON FUNCTION refund_credits TO service_role;
 GRANT EXECUTE ON FUNCTION get_user_credits TO authenticated;
 
 -- ============================================
+-- Admin: 管理者設定
+-- ============================================
+-- 管理者はauth.usersのapp_metadata.role = 'admin'で判定
+-- 設定方法（service_role keyで実行）:
+-- curl -X PUT "https://<ref>.supabase.co/auth/v1/admin/users/<user_id>" \
+--   -H "apikey: <service_role_key>" \
+--   -H "Authorization: Bearer <service_role_key>" \
+--   -H "Content-Type: application/json" \
+--   -d '{"app_metadata": {"role": "admin"}}'
+--
+-- クレジット調整はAPI route (/api/admin) 内で
+-- service_role clientを使い直接user_credits + credit_transactionsを操作
+
+-- ============================================
 -- Projects table (プロジェクト)
 -- ============================================
 CREATE TABLE IF NOT EXISTS projects (
