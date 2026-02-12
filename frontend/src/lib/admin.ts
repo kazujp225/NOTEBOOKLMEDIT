@@ -46,6 +46,33 @@ export interface AdminUser {
   total_usage: number;
   image_count: number;
   text_count: number;
+  is_banned: boolean;
+}
+
+export interface UserDetail {
+  user: {
+    id: string;
+    email: string;
+    created_at: string;
+    banned_until: string | null;
+    app_metadata: Record<string, unknown>;
+  };
+  balance: number;
+  transactions: Array<{
+    transaction_type: string;
+    amount: number;
+    balance_before: number;
+    balance_after: number;
+    description: string;
+    created_at: string;
+  }>;
+  requests: Array<{
+    request_type: string;
+    status: string;
+    cost: number;
+    error_message: string | null;
+    created_at: string;
+  }>;
 }
 
 export interface UsageStats {
@@ -82,6 +109,24 @@ export async function fetchUsageStats(): Promise<UsageStats> {
 export async function fetchRecentActivity(limit = 50): Promise<RecentActivity[]> {
   const data = await adminFetch(`/api/admin?action=recent_activity&limit=${limit}`);
   return data.activity;
+}
+
+export async function fetchUserDetail(userId: string): Promise<UserDetail> {
+  return adminFetch(`/api/admin?action=user_detail&user_id=${userId}`);
+}
+
+export async function banUser(userId: string, ban: boolean): Promise<{ success: boolean }> {
+  return adminFetch('/api/admin', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'ban_user', user_id: userId, ban }),
+  });
+}
+
+export async function resetPassword(userId: string, newPassword: string): Promise<{ success: boolean }> {
+  return adminFetch('/api/admin', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'reset_password', user_id: userId, new_password: newPassword }),
+  });
 }
 
 export async function adjustCredits(
