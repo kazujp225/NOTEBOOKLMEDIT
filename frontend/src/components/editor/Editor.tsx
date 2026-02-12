@@ -12,6 +12,7 @@ import { ExportPanel } from '@/components/panels/ExportPanel';
 import { useToast } from '@/components/ui/Toast';
 import { useAppStore, generateId, type Issue, type BBox, type PageData, type ProjectWithImages, type TextOverlay } from '@/lib/store';
 import { saveImage, getImage } from '@/lib/image-store';
+import { getCreditsInfo } from '@/lib/gemini';
 
 interface EditorProps {
   projectId: string;
@@ -51,6 +52,16 @@ export function Editor({ projectId }: EditorProps) {
   const [jobStatus, setJobStatus] = useState<{ type: 'ocr' | 'generate' | 'export'; message: string } | null>(null);
   const [regionPreviewUrl, setRegionPreviewUrl] = useState<string | null>(null);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
+
+  // Load credit balance
+  const refreshCredits = useCallback(() => {
+    getCreditsInfo().then((info) => {
+      if (info) setCreditBalance(info.balance);
+    });
+  }, []);
+
+  useEffect(() => { refreshCredits(); }, [refreshCredits]);
 
   // Load project images from IndexedDB
   useEffect(() => {
@@ -159,6 +170,9 @@ export function Editor({ projectId }: EditorProps) {
     if (pageIssue) {
       setSelectedIssue(pageIssue);
       setCurrentIssueIndex(issues.indexOf(pageIssue));
+    } else {
+      setSelectedIssue(null);
+      setCurrentIssueIndex(0);
     }
   }, [issues]);
 
@@ -224,6 +238,21 @@ export function Editor({ projectId }: EditorProps) {
         const isObjectEdit = selectedIssue.editMode === 'object';
         let inpaintPrompt: string;
 
+        // Build style hint from textStyle if provided
+        let styleHint = '';
+        if (textStyle && !isObjectEdit) {
+          const parts: string[] = [];
+          if (textStyle.fontSize) parts.push(`フォントサイズ${textStyle.fontSize}px`);
+          if (textStyle.fontFamily && textStyle.fontFamily !== 'Noto Sans JP') parts.push(`フォント「${textStyle.fontFamily}」`);
+          if (textStyle.fontWeight === 'bold') parts.push('太字');
+          if (textStyle.fontStyle === 'italic') parts.push('イタリック');
+          if (textStyle.color && textStyle.color !== '#000000') parts.push(`文字色${textStyle.color}`);
+          if (textStyle.backgroundColor && textStyle.backgroundColor !== '#FFFFFF' && textStyle.backgroundColor !== 'transparent') parts.push(`背景色${textStyle.backgroundColor}`);
+          if (parts.length > 0) {
+            styleHint = `スタイル指定: ${parts.join('、')}。`;
+          }
+        }
+
         if (isObjectEdit) {
           // Object mode: user input is always an instruction
           inpaintPrompt = `この画像の指定された領域について: ${text}。周囲のデザインと調和するようにしてください。`;
@@ -232,10 +261,10 @@ export function Editor({ projectId }: EditorProps) {
           const isInstruction = /[してくれ|ください|変えて|消して|削除|除去|なくし|修正|変更|大きく|小さく|太く|薄く|濃く|明るく|暗く]/.test(text) || text.length > 30;
           if (isInstruction) {
             // User is giving an instruction (e.g., "この文字を消して")
-            inpaintPrompt = `この画像の指定された領域について: ${text}。周囲のデザインと自然に調和するようにしてください。`;
+            inpaintPrompt = `この画像の指定された領域について: ${text}。${styleHint}周囲のデザインと自然に調和するようにしてください。`;
           } else {
             // User is providing replacement text (e.g., "正しいテキスト")
-            inpaintPrompt = `この領域のテキスト「${selectedIssue.ocrText || ''}」を「${text}」に修正してください。フォント・サイズ・色は元のテキストと同じにし、周囲のデザインと調和するようにしてください。`;
+            inpaintPrompt = `この領域のテキスト「${selectedIssue.ocrText || ''}」を「${text}」に修正してください。${styleHint || 'フォント・サイズ・色は元のテキストと同じにし、'}周囲のデザインと調和するようにしてください。`;
           }
         }
 
@@ -320,8 +349,9 @@ export function Editor({ projectId }: EditorProps) {
       addToast('error', err instanceof Error ? err.message : '修正の適用に失敗しました');
     } finally {
       setIsApplying(false);
+      refreshCredits();
     }
-  }, [selectedIssue, project, currentPage, currentPageNumber, projectId, issues, currentIssueIndex, updateIssue, handleIssueSelect, handleNextIssue, addToast]);
+  }, [selectedIssue, project, currentPage, currentPageNumber, projectId, issues, currentIssueIndex, updateIssue, handleIssueSelect, handleNextIssue, addToast, refreshCredits]);
 
   const handleSkip = useCallback(() => {
     if (!selectedIssue) return;
@@ -747,12 +777,13 @@ export function Editor({ projectId }: EditorProps) {
     }
 
     setIsApplying(false);
+    refreshCredits();
     if (errorCount === 0) {
       addToast('success', `一括処理完了: ${successCount}ページを更新しました`);
     } else {
       addToast('warning', `一括処理完了: ${successCount}ページ成功、${errorCount}ページ失敗`);
     }
-  }, [project, pages, projectId, addToast]);
+  }, [project, pages, projectId, addToast, refreshCredits]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -814,10 +845,10 @@ export function Editor({ projectId }: EditorProps) {
   // Loading state
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
+      <div className="h-screen flex items-center justify-center bg-[#141414]">
         <div className="text-center">
-          <Loader2 className="w-10 h-10 text-blue-500 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">プロジェクトを読み込み中...</p>
+          <Loader2 className="w-10 h-10 text-white/20 animate-spin mx-auto mb-4" />
+          <p className="text-white/40 text-sm">プロジェクトを読み込み中...</p>
         </div>
       </div>
     );
@@ -826,9 +857,9 @@ export function Editor({ projectId }: EditorProps) {
   // Error state - project not found
   if (!project) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
+      <div className="h-screen flex items-center justify-center bg-[#141414]">
         <div className="text-center max-w-md">
-          <p className="text-red-600 mb-4">プロジェクトが見つかりません</p>
+          <p className="text-red-400 mb-4">プロジェクトが見つかりません</p>
           <button
             onClick={() => router.push('/')}
             className="btn-secondary"
@@ -841,7 +872,7 @@ export function Editor({ projectId }: EditorProps) {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-300">
+    <div className="h-screen flex flex-col bg-gray-100">
       <TopBar
         projectName={project.name}
         totalPages={project.totalPages}
@@ -925,7 +956,7 @@ export function Editor({ projectId }: EditorProps) {
           />
         ) : (
           <div className="flex-1 flex items-center justify-center bg-gray-100">
-            <p className="text-gray-500">ページを選択してください</p>
+            <p className="text-white/30 text-sm">ページを選択してください</p>
           </div>
         )}
 
@@ -974,6 +1005,7 @@ export function Editor({ projectId }: EditorProps) {
           onUpdateOcrText={handleUpdateOcrText}
           onBatchApply={handleBatchApply}
           totalPages={pages.length}
+          creditBalance={creditBalance}
         />
       </div>
 

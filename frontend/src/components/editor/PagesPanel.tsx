@@ -54,7 +54,7 @@ export function PagesPanel({
   }, [issues]);
 
   return (
-    <aside className="w-[140px] bg-gray-200 border-r border-gray-300 flex flex-col flex-shrink-0">
+    <aside className="w-[140px] bg-gray-50 border-r border-gray-200 flex flex-col flex-shrink-0">
       {/* Thumbnail list */}
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {pages.map((page) => {
@@ -69,16 +69,16 @@ export function PagesPanel({
               key={page.page_number}
               onClick={() => onPageSelect(page.page_number)}
               className={cn(
-                'w-full rounded overflow-hidden transition-all',
+                'w-full rounded-md overflow-hidden transition-all',
                 isActive
-                  ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-200'
-                  : 'hover:ring-2 hover:ring-gray-400 hover:ring-offset-2 hover:ring-offset-gray-200'
+                  ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-50'
+                  : 'hover:ring-1 hover:ring-gray-300 hover:ring-offset-2 hover:ring-offset-gray-50 opacity-60 hover:opacity-100'
               )}
               aria-label={`ページ ${page.page_number}`}
               aria-current={isActive ? 'page' : undefined}
             >
               {/* Thumbnail image */}
-              <div className="relative bg-white shadow">
+              <div className="relative bg-white">
                 <img
                   src={page.thumbnail_url}
                   alt={`ページ ${page.page_number}`}
@@ -88,21 +88,21 @@ export function PagesPanel({
 
                 {/* Issue count badge */}
                 {unresolvedCount > 0 ? (
-                  <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-500 text-white text-[10px] font-bold rounded min-w-[16px] text-center">
+                  <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-500 text-white text-[10px] font-bold rounded min-w-[16px] text-center shadow-lg">
                     {unresolvedCount}
                   </div>
                 ) : pageIssues.length > 0 ? (
-                  <div className="absolute top-1 right-1 w-4 h-4 bg-green-500 text-white rounded-full flex items-center justify-center">
+                  <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-lg">
                     <Check className="w-2.5 h-2.5" />
                   </div>
                 ) : null}
               </div>
 
               {/* Page number */}
-              <div className="py-1 text-center bg-transparent">
+              <div className="py-1 text-center">
                 <span className={cn(
-                  'text-xs',
-                  isActive ? 'text-gray-900 font-medium' : 'text-gray-600'
+                  'text-xs tabular-nums',
+                  isActive ? 'text-gray-900 font-medium' : 'text-gray-400'
                 )}>
                   {page.page_number}
                 </span>

@@ -149,22 +149,22 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
     <div
       className={cn(
         'fixed inset-0 z-50 flex items-center justify-center transition-all duration-150',
-        isVisible ? 'bg-black/50 backdrop-blur-sm' : 'bg-transparent'
+        isVisible ? 'bg-black/40 backdrop-blur-sm' : 'bg-transparent'
       )}
       onClick={handleClose}
     >
       <div
         className={cn(
-          'bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden transition-all duration-150',
+          'bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden transition-all duration-150 border border-gray-200',
           isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
         )}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+        <div className="p-6 border-b border-gray-200 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">出力</h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <h2 className="text-lg font-semibold text-gray-900">出力</h2>
+            <p className="text-sm text-gray-400 mt-1">
               修正済みファイルをダウンロード
             </p>
           </div>
@@ -173,7 +173,7 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             aria-label="閉じる"
           >
-            <X className="w-5 h-5 text-gray-500" />
+            <X className="w-5 h-5 text-gray-400" />
           </button>
         </div>
 
@@ -193,10 +193,10 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-100 bg-gray-50">
+        <div className="p-6 border-t border-gray-200">
           <button
             onClick={handleClose}
-            className="btn-secondary w-full justify-center"
+            className="w-full py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
           >
             閉じる
           </button>
@@ -230,35 +230,35 @@ function ExportOption({
   return (
     <div
       className={cn(
-        'card p-4 flex items-center gap-4 transition-all',
-        status === 'completed' && 'ring-2 ring-green-200 bg-green-50/50',
-        status === 'error' && 'ring-2 ring-red-200 bg-red-50/50'
+        'bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center gap-4 transition-all',
+        status === 'completed' && 'border-emerald-300 bg-emerald-50',
+        status === 'error' && 'border-red-300 bg-red-50'
       )}
     >
       <div
         className={cn(
           'w-12 h-12 rounded-xl flex items-center justify-center',
           status === 'completed'
-            ? 'bg-green-100'
+            ? 'bg-emerald-100'
             : status === 'error'
             ? 'bg-red-100'
             : 'bg-blue-100'
         )}
       >
         {status === 'processing' || status === 'loading' ? (
-          <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+          <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
         ) : status === 'completed' ? (
-          <CheckCircle2 className="w-6 h-6 text-green-600" />
+          <CheckCircle2 className="w-6 h-6 text-emerald-500" />
         ) : status === 'error' ? (
-          <XCircle className="w-6 h-6 text-red-600" />
+          <XCircle className="w-6 h-6 text-red-500" />
         ) : (
-          <Icon className="w-6 h-6 text-blue-600" />
+          <Icon className="w-6 h-6 text-blue-500" />
         )}
       </div>
 
       <div className="flex-1 min-w-0">
         <h3 className="font-semibold text-gray-900">{title}</h3>
-        <p className="text-sm text-gray-500 truncate">
+        <p className="text-sm text-gray-400 truncate">
           {status === 'error' ? error : description}
         </p>
       </div>
@@ -266,7 +266,7 @@ function ExportOption({
       {status === 'completed' ? (
         <button
           onClick={onDownload}
-          className="btn-primary btn-sm"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors"
         >
           <Download className="w-4 h-4" />
           DL
@@ -276,8 +276,10 @@ function ExportOption({
           onClick={onExport}
           disabled={status === 'processing' || status === 'loading' || disabled}
           className={cn(
-            'btn-sm',
-            status === 'error' ? 'btn-danger' : 'btn-primary'
+            'px-4 py-1.5 text-sm font-medium rounded-lg transition-colors disabled:opacity-30',
+            status === 'error'
+              ? 'text-red-600 bg-red-100 hover:bg-red-200'
+              : 'text-gray-700 bg-gray-200 hover:bg-gray-300'
           )}
         >
           {status === 'processing' || status === 'loading' ? (

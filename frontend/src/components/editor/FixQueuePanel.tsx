@@ -11,47 +11,19 @@ import {
   Type,
   Upload,
   X,
-  Settings2,
   AlertTriangle,
   CheckCircle2,
   Clock,
   Zap,
-  FileText,
   ChevronDown,
   ChevronUp,
   Info,
   Target,
   Palette,
-  Bold,
-  Italic,
-  Underline,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  RotateCcw,
-  RotateCw,
-  FlipHorizontal,
-  FlipVertical,
-  Sun,
-  Contrast,
-  Eraser,
-  Highlighter,
   Copy,
   Trash2,
-  RefreshCw,
   ScanText,
-  ImagePlus,
-  Undo2,
-  Redo2,
-  ZoomIn,
-  ZoomOut,
-  Move,
-  Crop,
-  Layers,
   PaintBucket,
-  Pipette,
-  CircleDot,
-  Square,
   Minus,
   Plus,
   Shapes,
@@ -115,94 +87,7 @@ interface FixQueuePanelProps {
   onUpdateOcrText?: (issueId: string, text: string) => void;
   onBatchApply?: (prompt: string, pageNumbers: 'all' | number[]) => Promise<void>;
   totalPages?: number;
-}
-
-// Toolbar button component
-function ToolbarButton({
-  icon: Icon,
-  label,
-  active = false,
-  disabled = false,
-  danger = false,
-  onClick
-}: {
-  icon: React.ElementType;
-  label: string;
-  active?: boolean;
-  disabled?: boolean;
-  danger?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={label}
-      className={cn(
-        'w-8 h-8 flex items-center justify-center rounded-lg transition-all',
-        active && 'bg-blue-100 text-blue-600',
-        danger && 'hover:bg-red-100 hover:text-red-600',
-        !active && !danger && 'hover:bg-gray-100 text-gray-600',
-        disabled && 'opacity-30 cursor-not-allowed'
-      )}
-    >
-      <Icon className="w-4 h-4" />
-    </button>
-  );
-}
-
-// Toolbar divider
-function ToolbarDivider() {
-  return <div className="w-px h-6 bg-gray-200 mx-1" />;
-}
-
-// Color picker button
-function ColorPickerButton({ color, onChange, label }: { color: string; onChange: (color: string) => void; label: string }) {
-  return (
-    <div className="relative">
-      <input
-        type="color"
-        value={color}
-        onChange={(e) => onChange(e.target.value)}
-        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-        title={label}
-      />
-      <div
-        className="w-6 h-6 rounded border-2 border-gray-300 cursor-pointer hover:border-gray-400"
-        style={{ backgroundColor: color }}
-      />
-    </div>
-  );
-}
-
-// Number stepper
-function NumberStepper({ value, onChange, min, max, step = 1, label }: {
-  value: number;
-  onChange: (value: number) => void;
-  min: number;
-  max: number;
-  step?: number;
-  label: string;
-}) {
-  return (
-    <div className="flex items-center gap-1" title={label}>
-      <button
-        onClick={() => onChange(Math.max(min, value - step))}
-        className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-600"
-        disabled={value <= min}
-      >
-        <Minus className="w-3 h-3" />
-      </button>
-      <span className="w-8 text-center text-xs font-medium text-gray-700">{value}</span>
-      <button
-        onClick={() => onChange(Math.min(max, value + step))}
-        className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-600"
-        disabled={value >= max}
-      >
-        <Plus className="w-3 h-3" />
-      </button>
-    </div>
-  );
+  creditBalance?: number | null;
 }
 
 // Confidence badge component
@@ -265,6 +150,7 @@ export function FixQueuePanel({
   onUpdateOcrText,
   onBatchApply,
   totalPages = 1,
+  creditBalance,
 }: FixQueuePanelProps) {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedCandidateIndex, setSelectedCandidateIndex] = useState<number | null>(null);
@@ -292,7 +178,6 @@ export function FixQueuePanel({
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
   const [referenceDesign, setReferenceDesign] = useState<DesignDefinition | null>(null);
   const [isAnalyzingDesign, setIsAnalyzingDesign] = useState(false);
-  const [fontAccordionOpen, setFontAccordionOpen] = useState(false);
   const [issueListOpen, setIssueListOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -300,6 +185,19 @@ export function FixQueuePanel({
   const [batchPrompt, setBatchPrompt] = useState('');
   const [isBatchApplying, setIsBatchApplying] = useState(false);
   const [batchTarget, setBatchTarget] = useState<'all' | 'current'>('all');
+  const [activeBatchCategory, setActiveBatchCategory] = useState<string | null>(null);
+  const [selectedBgColor, setSelectedBgColor] = useState('#FFFFFF');
+  const [selectedTextColor, setSelectedTextColor] = useState('#000000');
+  const [showFreeInput, setShowFreeInput] = useState(false);
+
+  // Cost confirmation dialog
+  const [costConfirm, setCostConfirm] = useState<{
+    message: string;
+    cost: number;
+    insufficient: boolean;
+    balance: number | null;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Progress calculations
   const resolvedCount = issues.filter(
@@ -374,7 +272,7 @@ export function FixQueuePanel({
     }
   };
 
-  const handleApply = async () => {
+  const executeApply = async () => {
     if (!currentIssue) return;
 
     if (isObjectMode) {
@@ -406,15 +304,54 @@ export function FixQueuePanel({
     setSelectedCandidateIndex(null);
   };
 
-  const handleBatchApply = async () => {
-    if (!batchPrompt.trim() || !onBatchApply) return;
+  const handleApply = () => {
+    if (!currentIssue) return;
+    const cost = correctionMethod === 'ai_inpaint' || isObjectMode ? 10 : 1;
+    const bal = creditBalance ?? null;
+    const insufficient = bal !== null && bal < cost;
+    setCostConfirm({
+      message: `この修正を実行しますか？`,
+      cost,
+      insufficient,
+      balance: bal,
+      onConfirm: () => {
+        setCostConfirm(null);
+        executeApply();
+      },
+    });
+  };
+
+  const executeBatch = async (prompt: string) => {
+    if (!onBatchApply) return;
     setIsBatchApplying(true);
     try {
-      await onBatchApply(batchPrompt.trim(), 'all');
-      setBatchPrompt('');
+      await onBatchApply(prompt, 'all');
     } finally {
       setIsBatchApplying(false);
+      setActiveBatchCategory(null);
+      setBatchPrompt('');
     }
+  };
+
+  const confirmBatch = (description: string, prompt: string) => {
+    const cost = totalPages * 10;
+    const bal = creditBalance ?? null;
+    const insufficient = bal !== null && bal < cost;
+    setCostConfirm({
+      message: `「${description}」を全${totalPages}ページに適用しますか？`,
+      cost,
+      insufficient,
+      balance: bal,
+      onConfirm: () => {
+        setCostConfirm(null);
+        executeBatch(prompt);
+      },
+    });
+  };
+
+  const handleBatchApply = () => {
+    if (!batchPrompt.trim() || !onBatchApply) return;
+    confirmBatch(batchPrompt.trim().slice(0, 20) + (batchPrompt.trim().length > 20 ? '...' : ''), batchPrompt.trim());
   };
 
   // Empty state
@@ -448,9 +385,8 @@ export function FixQueuePanel({
                 <div className="w-full space-y-1.5">
                   {[
                     { step: 1, title: '範囲を選択', desc: 'ドラッグで囲む', active: true },
-                    { step: 2, title: 'テキストを編集', desc: '文字化けを修正', active: false },
-                    { step: 3, title: 'スタイルを調整', desc: 'フォント・色など', active: false },
-                    { step: 4, title: '適用', desc: '修正を反映', active: false },
+                    { step: 2, title: '修正内容を入力', desc: 'テキスト・色・レイアウト等', active: false },
+                    { step: 3, title: '適用', desc: 'AIが自動で修正', active: false },
                   ].map(({ step, title, desc, active }) => (
                     <div
                       key={step}
@@ -498,47 +434,300 @@ export function FixQueuePanel({
           {/* Batch Operations */}
           {onBatchApply && (
             <div className="mt-auto pt-4 border-t border-gray-200 space-y-3">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1">
                 <PaintBucket className="w-4 h-4 text-purple-500" />
                 <h3 className="text-sm font-semibold text-gray-900">一括編集</h3>
               </div>
-              <p className="text-xs text-gray-500">
-                全ページに対してAIで一括編集を実行します（{totalPages}ページ × 10クレジット）
+              <p className="text-xs text-gray-400 mb-2">
+                全ページに一括変更（{totalPages}ページ × 10cr = <span className="font-semibold text-orange-500">{totalPages * 10}cr</span>）
               </p>
-              <textarea
-                value={batchPrompt}
-                onChange={(e) => setBatchPrompt(e.target.value)}
-                placeholder={"例: 背景色を青から赤に変更\n例: すべてのテキストの色を白にして\n例: ヘッダーのロゴを大きくして\n例: 全体のコントラストを上げて"}
-                className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white resize-none"
-                rows={3}
-                disabled={isBatchApplying}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && batchPrompt.trim()) {
-                    handleBatchApply();
-                  }
-                }}
-              />
-              <button
-                onClick={handleBatchApply}
-                disabled={isBatchApplying || !batchPrompt.trim()}
-                className="w-full py-2.5 text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white"
-              >
-                {isBatchApplying ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    一括処理中...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4" />
-                    全ページに適用
-                  </>
+
+              {/* Category: Background Color */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setActiveBatchCategory(activeBatchCategory === 'bg' ? null : 'bg')}
+                  className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  disabled={isBatchApplying}
+                >
+                  <span className="flex items-center gap-2">
+                    <Palette className="w-4 h-4 text-gray-400" />
+                    背景色を変更
+                    <span className="text-[10px] text-orange-500 font-medium">{totalPages * 10}cr</span>
+                  </span>
+                  {activeBatchCategory === 'bg' ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                </button>
+                {activeBatchCategory === 'bg' && (
+                  <div className="px-3 pb-3 space-y-2 border-t border-gray-100">
+                    <div className="flex items-center gap-1.5 pt-2 flex-wrap">
+                      {[
+                        { color: '#FFFFFF', label: '白' },
+                        { color: '#000000', label: '黒' },
+                        { color: '#EF4444', label: '赤' },
+                        { color: '#3B82F6', label: '青' },
+                        { color: '#22C55E', label: '緑' },
+                        { color: '#EAB308', label: '黄' },
+                      ].map(({ color, label }) => (
+                        <button
+                          key={color}
+                          onClick={() => setSelectedBgColor(color)}
+                          title={label}
+                          className={cn(
+                            'w-8 h-8 rounded-full border-2 transition-all flex-shrink-0',
+                            selectedBgColor === color ? 'border-purple-500 scale-110' : 'border-gray-200 hover:border-gray-400'
+                          )}
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                      <label className="relative w-8 h-8 rounded-full border-2 border-dashed border-gray-300 hover:border-gray-400 cursor-pointer flex items-center justify-center flex-shrink-0 overflow-hidden" title="カスタム色">
+                        <Plus className="w-3.5 h-3.5 text-gray-400" />
+                        <input
+                          type="color"
+                          value={selectedBgColor}
+                          onChange={(e) => setSelectedBgColor(e.target.value)}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                        />
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded border border-gray-200 flex-shrink-0" style={{ backgroundColor: selectedBgColor }} />
+                      <span className="text-xs text-gray-500 flex-1">{selectedBgColor}</span>
+                      <button
+                        onClick={() => {
+                          const colorName = { '#FFFFFF': '白', '#000000': '黒', '#EF4444': '赤', '#3B82F6': '青', '#22C55E': '緑', '#EAB308': '黄' }[selectedBgColor] || selectedBgColor;
+                          confirmBatch(`背景色を${colorName}に変更`, `全ページの背景色を${colorName}（${selectedBgColor}）に変更してください`);
+                        }}
+                        disabled={isBatchApplying}
+                        className="px-3 py-1.5 text-xs font-medium rounded-md bg-purple-600 hover:bg-purple-700 text-white transition-colors disabled:opacity-40"
+                      >
+                        {isBatchApplying ? <Loader2 className="w-3 h-3 animate-spin" /> : '適用'}
+                      </button>
+                    </div>
+                  </div>
                 )}
-              </button>
-              <p className="text-xs text-gray-400 text-center">⌘+Enter で実行</p>
+              </div>
+
+              {/* Category: Text Color */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setActiveBatchCategory(activeBatchCategory === 'text' ? null : 'text')}
+                  className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  disabled={isBatchApplying}
+                >
+                  <span className="flex items-center gap-2">
+                    <Type className="w-4 h-4 text-gray-400" />
+                    テキスト色を変更
+                    <span className="text-[10px] text-orange-500 font-medium">{totalPages * 10}cr</span>
+                  </span>
+                  {activeBatchCategory === 'text' ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                </button>
+                {activeBatchCategory === 'text' && (
+                  <div className="px-3 pb-3 space-y-2 border-t border-gray-100">
+                    <div className="flex items-center gap-1.5 pt-2 flex-wrap">
+                      {[
+                        { color: '#FFFFFF', label: '白' },
+                        { color: '#000000', label: '黒' },
+                        { color: '#EF4444', label: '赤' },
+                        { color: '#3B82F6', label: '青' },
+                        { color: '#22C55E', label: '緑' },
+                        { color: '#EAB308', label: '黄' },
+                      ].map(({ color, label }) => (
+                        <button
+                          key={color}
+                          onClick={() => setSelectedTextColor(color)}
+                          title={label}
+                          className={cn(
+                            'w-8 h-8 rounded-full border-2 transition-all flex-shrink-0',
+                            selectedTextColor === color ? 'border-purple-500 scale-110' : 'border-gray-200 hover:border-gray-400'
+                          )}
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                      <label className="relative w-8 h-8 rounded-full border-2 border-dashed border-gray-300 hover:border-gray-400 cursor-pointer flex items-center justify-center flex-shrink-0 overflow-hidden" title="カスタム色">
+                        <Plus className="w-3.5 h-3.5 text-gray-400" />
+                        <input
+                          type="color"
+                          value={selectedTextColor}
+                          onChange={(e) => setSelectedTextColor(e.target.value)}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                        />
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded border border-gray-200 flex-shrink-0" style={{ backgroundColor: selectedTextColor }} />
+                      <span className="text-xs text-gray-500 flex-1">{selectedTextColor}</span>
+                      <button
+                        onClick={() => {
+                          const colorName = { '#FFFFFF': '白', '#000000': '黒', '#EF4444': '赤', '#3B82F6': '青', '#22C55E': '緑', '#EAB308': '黄' }[selectedTextColor] || selectedTextColor;
+                          confirmBatch(`テキスト色を${colorName}に変更`, `全ページのテキストの色を${colorName}（${selectedTextColor}）に変更してください`);
+                        }}
+                        disabled={isBatchApplying}
+                        className="px-3 py-1.5 text-xs font-medium rounded-md bg-purple-600 hover:bg-purple-700 text-white transition-colors disabled:opacity-40"
+                      >
+                        {isBatchApplying ? <Loader2 className="w-3 h-3 animate-spin" /> : '適用'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Category: Mood/Atmosphere */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setActiveBatchCategory(activeBatchCategory === 'mood' ? null : 'mood')}
+                  className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  disabled={isBatchApplying}
+                >
+                  <span className="flex items-center gap-2">
+                    <Shapes className="w-4 h-4 text-gray-400" />
+                    雰囲気を変更
+                    <span className="text-[10px] text-orange-500 font-medium">{totalPages * 10}cr</span>
+                  </span>
+                  {activeBatchCategory === 'mood' ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                </button>
+                {activeBatchCategory === 'mood' && (
+                  <div className="px-3 pb-3 pt-2 border-t border-gray-100">
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { label: '明るく', prompt: '全体をより明るい雰囲気にしてください' },
+                        { label: '暗く', prompt: '全体をより暗い・落ち着いた雰囲気にしてください' },
+                        { label: 'モダンに', prompt: '全体をよりモダンでスタイリッシュなデザインにしてください' },
+                        { label: 'レトロに', prompt: '全体をレトロ・ヴィンテージな雰囲気にしてください' },
+                        { label: 'プロフェッショナル', prompt: '全体をよりプロフェッショナルでビジネス向けなデザインにしてください' },
+                        { label: 'カジュアル', prompt: '全体をよりカジュアルでフレンドリーな雰囲気にしてください' },
+                      ].map(({ label, prompt }) => (
+                        <button
+                          key={label}
+                          onClick={() => confirmBatch(label, prompt)}
+                          disabled={isBatchApplying}
+                          className="py-2 text-xs font-medium rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Free Input (collapsible) */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setShowFreeInput(!showFreeInput)}
+                  className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  disabled={isBatchApplying}
+                >
+                  <span className="flex items-center gap-2">
+                    <Edit3 className="w-4 h-4 text-gray-400" />
+                    その他の編集
+                    <span className="text-[10px] text-orange-500 font-medium">{totalPages * 10}cr</span>
+                  </span>
+                  {showFreeInput ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                </button>
+                {showFreeInput && (
+                  <div className="px-3 pb-3 pt-2 space-y-2 border-t border-gray-100">
+                    <textarea
+                      value={batchPrompt}
+                      onChange={(e) => setBatchPrompt(e.target.value)}
+                      placeholder={"自由に指示を入力\n例: ヘッダーのロゴを大きくして"}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-300 bg-white resize-none"
+                      rows={2}
+                      disabled={isBatchApplying}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && batchPrompt.trim()) {
+                          handleBatchApply();
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={handleBatchApply}
+                      disabled={isBatchApplying || !batchPrompt.trim()}
+                      className="w-full py-2 text-sm font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+                    >
+                      {isBatchApplying ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          処理中...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-3.5 h-3.5" />
+                          全ページに適用
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
+
+        {/* Cost confirmation dialog */}
+        {costConfirm && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden border border-gray-200">
+              <div className="p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className={cn(
+                    'w-10 h-10 rounded-xl flex items-center justify-center',
+                    costConfirm.insufficient ? 'bg-red-100' : 'bg-orange-100'
+                  )}>
+                    {costConfirm.insufficient
+                      ? <AlertTriangle className="w-5 h-5 text-red-500" />
+                      : <Zap className="w-5 h-5 text-orange-500" />
+                    }
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      {costConfirm.insufficient ? 'クレジット不足' : 'クレジット消費の確認'}
+                    </h3>
+                    <p className="text-xs text-gray-400">
+                      {costConfirm.insufficient ? '実行に必要なクレジットが足りません' : '実行前にご確認ください'}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-700 mb-3">{costConfirm.message}</p>
+                <div className={cn(
+                  'p-3 rounded-lg border',
+                  costConfirm.insufficient ? 'bg-red-50 border-red-200' : 'bg-orange-50 border-orange-200'
+                )}>
+                  <p className={cn(
+                    'text-sm font-semibold text-center',
+                    costConfirm.insufficient ? 'text-red-800' : 'text-orange-800'
+                  )}>
+                    消費: <span className="text-lg">{costConfirm.cost}</span> クレジット
+                  </p>
+                  {costConfirm.balance !== null && (
+                    <p className={cn(
+                      'text-xs text-center mt-1',
+                      costConfirm.insufficient ? 'text-red-600' : 'text-orange-600'
+                    )}>
+                      現在の残高: {costConfirm.balance} クレジット
+                      {costConfirm.insufficient && ` （${costConfirm.cost - costConfirm.balance} 不足）`}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="px-5 pb-5 flex gap-2">
+                <button
+                  onClick={() => setCostConfirm(null)}
+                  className="flex-1 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  {costConfirm.insufficient ? '閉じる' : 'キャンセル'}
+                </button>
+                {!costConfirm.insufficient && (
+                  <button
+                    onClick={costConfirm.onConfirm}
+                    className="flex-1 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    実行する
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </aside>
     );
   }
@@ -664,454 +853,99 @@ export function FixQueuePanel({
       </div>
 
       {/* Mode indicator */}
-      <div className="px-4 py-2 flex items-center gap-2 text-xs font-medium border-b border-gray-100 text-gray-500">
-        {isObjectMode ? <Shapes className="w-3.5 h-3.5" /> : <Type className="w-3.5 h-3.5" />}
-        {isObjectMode ? 'オブジェクト修正モード' : 'テキスト修正モード'}
+      <div className="px-4 py-2 flex items-center gap-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+        <Edit3 className="w-3.5 h-3.5" />
+        修正モード
       </div>
 
-      {/* Tab bar */}
-      <div className="flex border-b border-gray-200">
-        {(isObjectMode
-          ? [
-              { id: 'edit', label: '編集', icon: Edit3 },
-              { id: 'ai', label: 'AI設定', icon: Settings2 },
-            ]
-          : [
-              { id: 'edit', label: '編集', icon: Edit3 },
-              { id: 'style', label: 'スタイル', icon: Palette },
-              { id: 'ai', label: 'AI設定', icon: Settings2 },
-            ]
-        ).map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id as typeof activeTab)}
-            className={cn(
-              'flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors border-b-2',
-              activeTab === id
-                ? 'text-blue-600 border-blue-500'
-                : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50'
-            )}
-          >
-            <Icon className="w-4 h-4" />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Content - Scrollable */}
+      {/* Content - Scrollable, no tabs */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {/* Edit Tab */}
-        {activeTab === 'edit' && (
-          <div className="p-4 space-y-4">
-            {/* Region Preview */}
-            {regionPreviewUrl && (
+        <div className="p-4 space-y-4">
+          {/* Region Preview */}
+          {regionPreviewUrl && (
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-2 block">選択領域</label>
+              <div className="rounded-lg border border-gray-200 overflow-hidden bg-gray-50">
+                <img
+                  src={regionPreviewUrl}
+                  alt="選択領域"
+                  className="w-full h-auto max-h-28 object-contain"
+                />
+              </div>
+              <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-400">
+                <span>ページ {currentIssue.page_number}</span>
+                <span>{Math.round(currentIssue.bbox.width)} × {Math.round(currentIssue.bbox.height)} px</span>
+              </div>
+            </div>
+          )}
+
+          {isObjectMode ? (
+            /* Object mode: free prompt input */
+            <>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-2 block">選択領域</label>
-                <div className="rounded-lg border border-gray-200 overflow-hidden bg-gray-50">
-                  <img
-                    src={regionPreviewUrl}
-                    alt="選択領域"
-                    className="w-full h-auto max-h-28 object-contain"
-                  />
-                </div>
-                <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-400">
-                  <span>ページ {currentIssue.page_number}</span>
-                  <span>{Math.round(currentIssue.bbox.width)} × {Math.round(currentIssue.bbox.height)} px</span>
-                </div>
+                <label className="text-xs font-medium text-gray-700 mb-2 block">この領域をどう修正しますか？</label>
+                <textarea
+                  value={objectPrompt}
+                  onChange={(e) => setObjectPrompt(e.target.value)}
+                  placeholder="例: この画像を明るくして&#10;例: ロゴを赤に変更して&#10;例: 背景をぼかして"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 bg-white resize-none"
+                  rows={3}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && objectPrompt.trim()) {
+                      handleApply();
+                    }
+                  }}
+                />
+                <p className="text-xs text-gray-400 mt-1"><span className="text-orange-500 font-medium">10cr</span>/回 ⌘+Enter で実行</p>
               </div>
-            )}
-
-            {isObjectMode ? (
-              /* Object mode: free prompt input */
-              <>
+            </>
+          ) : (
+            /* Text mode - unified */
+            <>
+              {/* OCR Text */}
+              {currentIssue.ocr_text !== undefined && (
                 <div>
-                  <label className="text-xs font-medium text-gray-700 mb-2 block">修正プロンプト</label>
-                  <textarea
-                    value={objectPrompt}
-                    onChange={(e) => setObjectPrompt(e.target.value)}
-                    placeholder="例: この画像を明るくして&#10;例: ロゴを赤に変更して&#10;例: 背景をぼかして"
-                    className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white resize-none"
-                    rows={4}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && objectPrompt.trim()) {
-                        handleApply();
-                      }
-                    }}
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-medium text-gray-500">検出テキスト</label>
+                    <button
+                      onClick={() => setCustomText(currentIssue.ocr_text || '')}
+                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" />
+                      コピー
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={currentIssue.ocr_text || ''}
+                    onChange={(e) => onUpdateOcrText?.(currentIssue.id, e.target.value)}
+                    className="w-full p-2.5 bg-gray-50 rounded-md border border-gray-200 text-sm text-gray-700 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 focus:bg-white"
+                    placeholder="OCR結果をここで修正..."
                   />
-                  <p className="text-xs text-gray-400 mt-1">⌘+Enter で適用</p>
-                </div>
-
-                {/* AI info */}
-                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="flex items-start gap-2">
-                    <Info className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div className="text-xs text-gray-600">
-                      <p className="font-medium mb-1">Gemini AI で画像を編集</p>
-                      <p className="text-gray-500">選択した領域に対して、プロンプトの指示通りにAIが画像を編集します。10クレジット/回</p>
-                    </div>
-                  </div>
-                </div>
-              </>
-            ) : (
-              /* Text mode */
-              <>
-                {/* OCR Text (editable) */}
-                {currentIssue.ocr_text !== undefined && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-xs font-medium text-gray-500">検出テキスト（クリックで編集可）</label>
-                      <button
-                        onClick={() => setCustomText(currentIssue.ocr_text || '')}
-                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                      >
-                        <Copy className="w-3 h-3" />
-                        コピー
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      value={currentIssue.ocr_text || ''}
-                      onChange={(e) => onUpdateOcrText?.(currentIssue.id, e.target.value)}
-                      className="w-full p-2.5 bg-gray-50 rounded-md border border-gray-200 text-sm text-gray-700 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white"
-                      placeholder="OCR結果をここで修正..."
-                    />
-                  </div>
-                )}
-
-                {/* Correction method toggle */}
-                <div>
-                  <label className="text-xs font-medium text-gray-500 mb-2 block">修正方法</label>
-                  <div className="grid grid-cols-2 gap-1 p-1 bg-gray-100 rounded-lg">
-                    <button
-                      onClick={() => setCorrectionMethod('ai_inpaint')}
-                      className={cn(
-                        'py-2 text-xs font-medium rounded-md transition-all flex items-center justify-center gap-1.5',
-                        correctionMethod === 'ai_inpaint'
-                          ? 'bg-white text-blue-700 shadow-sm'
-                          : 'text-gray-500 hover:text-gray-700'
-                      )}
-                    >
-                      <Zap className="w-3.5 h-3.5" />
-                      AI修正
-                    </button>
-                    <button
-                      onClick={() => setCorrectionMethod('text_overlay')}
-                      className={cn(
-                        'py-2 text-xs font-medium rounded-md transition-all flex items-center justify-center gap-1.5',
-                        correctionMethod === 'text_overlay'
-                          ? 'bg-white text-green-700 shadow-sm'
-                          : 'text-gray-500 hover:text-gray-700'
-                      )}
-                    >
-                      <Type className="w-3.5 h-3.5" />
-                      テキスト上書き
-                    </button>
-                  </div>
-                </div>
-
-                {/* Input area - changes based on correction method */}
-                {correctionMethod === 'ai_inpaint' ? (
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 mb-2 block">この領域をどう編集しますか？</label>
-                    <textarea
-                      value={customText}
-                      onChange={(e) => setCustomText(e.target.value)}
-                      placeholder={"例: フォントを大きくして\n例: 背景を白に変えて\n例: この文字を消して\n例: 「正しいテキスト」に修正して"}
-                      className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white resize-none"
-                      rows={3}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customText.trim()) {
-                          handleApply();
-                        }
-                      }}
-                    />
-                    <p className="text-xs text-gray-400 mt-1">AIが指示に従って画像を編集します（10クレジット） ⌘+Enter で適用</p>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 mb-2 block">置換テキスト</label>
-                    <textarea
-                      value={customText}
-                      onChange={(e) => setCustomText(e.target.value)}
-                      placeholder="正しいテキストを入力してください"
-                      className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white resize-none"
-                      rows={2}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customText.trim()) {
-                          handleApply();
-                        }
-                      }}
-                    />
-                    <p className="text-xs text-gray-400 mt-1">「スタイル」タブでフォントや色を調整できます ⌘+Enter で適用</p>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Style Tab */}
-        {activeTab === 'style' && (
-          <div className="p-4 space-y-4">
-            {/* Quick format toolbar */}
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-2 block">テキスト書式</label>
-              <div className="flex items-center gap-1 p-2 bg-gray-50 rounded-lg">
-                <ToolbarButton
-                  icon={Bold}
-                  label="太字"
-                  active={textStyle.fontWeight === 'bold'}
-                  onClick={() => setTextStyle(s => ({ ...s, fontWeight: s.fontWeight === 'bold' ? 'normal' : 'bold' }))}
-                />
-                <ToolbarButton
-                  icon={Italic}
-                  label="斜体"
-                  active={textStyle.fontStyle === 'italic'}
-                  onClick={() => setTextStyle(s => ({ ...s, fontStyle: s.fontStyle === 'italic' ? 'normal' : 'italic' }))}
-                />
-                <ToolbarButton
-                  icon={Underline}
-                  label="下線"
-                  active={textStyle.textDecoration === 'underline'}
-                  onClick={() => setTextStyle(s => ({ ...s, textDecoration: s.textDecoration === 'underline' ? 'none' : 'underline' }))}
-                />
-                <ToolbarDivider />
-                <ToolbarButton
-                  icon={AlignLeft}
-                  label="左揃え"
-                  active={textStyle.textAlign === 'left'}
-                  onClick={() => setTextStyle(s => ({ ...s, textAlign: 'left' }))}
-                />
-                <ToolbarButton
-                  icon={AlignCenter}
-                  label="中央揃え"
-                  active={textStyle.textAlign === 'center'}
-                  onClick={() => setTextStyle(s => ({ ...s, textAlign: 'center' }))}
-                />
-                <ToolbarButton
-                  icon={AlignRight}
-                  label="右揃え"
-                  active={textStyle.textAlign === 'right'}
-                  onClick={() => setTextStyle(s => ({ ...s, textAlign: 'right' }))}
-                />
-              </div>
-            </div>
-
-            {/* Font size */}
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-2 block">フォントサイズ</label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min="8"
-                  max="72"
-                  value={textStyle.fontSize}
-                  onChange={(e) => setTextStyle(s => ({ ...s, fontSize: parseInt(e.target.value) }))}
-                  className="flex-1 h-2 bg-gray-200 rounded-full appearance-none cursor-pointer"
-                />
-                <span className="w-12 text-center text-sm font-medium text-gray-700">{textStyle.fontSize}px</span>
-              </div>
-            </div>
-
-            {/* Font family - Accordion */}
-            <div>
-              <button
-                onClick={() => setFontAccordionOpen(prev => !prev)}
-                className="w-full flex items-center justify-between text-xs font-medium text-gray-500 mb-2"
-              >
-                <span>フォント: <span className="text-gray-900 font-bold">{
-                  { 'Noto Sans JP': 'Noto Sans JP', 'Hiragino Sans': 'ヒラギノ角ゴ', 'Yu Gothic': '游ゴシック', 'Meiryo': 'メイリオ', 'Arial': 'Arial', 'Times New Roman': 'Times New Roman' }[textStyle.fontFamily] || textStyle.fontFamily
-                }</span></span>
-                {fontAccordionOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-              {fontAccordionOpen && (
-                <div className="space-y-1">
-                  {[
-                    { value: 'Noto Sans JP', label: 'Noto Sans JP' },
-                    { value: 'Hiragino Sans', label: 'ヒラギノ角ゴ' },
-                    { value: 'Yu Gothic', label: '游ゴシック' },
-                    { value: 'Meiryo', label: 'メイリオ' },
-                    { value: 'Arial', label: 'Arial' },
-                    { value: 'Times New Roman', label: 'Times New Roman' },
-                  ].map(({ value, label }) => (
-                    <button
-                      key={value}
-                      onClick={() => {
-                        setTextStyle(s => ({ ...s, fontFamily: value }));
-                        setFontAccordionOpen(false);
-                      }}
-                      className={cn(
-                        'w-full text-left px-3 py-2 text-sm rounded-md transition-colors',
-                        textStyle.fontFamily === value
-                          ? 'bg-blue-50 text-blue-700 font-medium border border-blue-200'
-                          : 'hover:bg-gray-50 text-gray-700 border border-transparent'
-                      )}
-                      style={{ fontFamily: value }}
-                    >
-                      {label}
-                    </button>
-                  ))}
                 </div>
               )}
-            </div>
 
-            {/* Colors */}
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-2 block">色</label>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">文字</span>
-                  <ColorPickerButton
-                    color={textStyle.color}
-                    onChange={(color) => setTextStyle(s => ({ ...s, color }))}
-                    label="文字色"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">背景</span>
-                  <ColorPickerButton
-                    color={textStyle.backgroundColor}
-                    onChange={(color) => setTextStyle(s => ({ ...s, backgroundColor: color }))}
-                    label="背景色"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Preset colors */}
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-2 block">プリセット</label>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { color: '#000000', bg: '#ffffff', label: '黒/白' },
-                  { color: '#ffffff', bg: '#000000', label: '白/黒' },
-                  { color: '#1e40af', bg: '#dbeafe', label: '青' },
-                  { color: '#166534', bg: '#dcfce7', label: '緑' },
-                  { color: '#9a3412', bg: '#ffedd5', label: 'オレンジ' },
-                  { color: '#7c2d12', bg: '#fef3c7', label: '茶' },
-                ].map(({ color, bg, label }) => (
-                  <button
-                    key={label}
-                    onClick={() => setTextStyle(s => ({ ...s, color, backgroundColor: bg }))}
-                    className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 hover:border-gray-300"
-                    style={{ color, backgroundColor: bg }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Preview */}
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-2 block">プレビュー</label>
-              <div
-                className="p-4 rounded-md border border-gray-200 min-h-[60px] flex items-center justify-center"
-                style={{ backgroundColor: textStyle.backgroundColor }}
-              >
-                <span
-                  style={{
-                    fontFamily: textStyle.fontFamily,
-                    fontSize: `${Math.min(textStyle.fontSize, 24)}px`,
-                    fontWeight: textStyle.fontWeight,
-                    fontStyle: textStyle.fontStyle,
-                    textDecoration: textStyle.textDecoration,
-                    color: textStyle.color,
-                    textAlign: textStyle.textAlign,
+              {/* Correction input */}
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-2 block">修正内容</label>
+                <textarea
+                  value={customText}
+                  onChange={(e) => setCustomText(e.target.value)}
+                  placeholder={"なんでも修正できます\n例: 誤字を直す、色を変える、フォントを大きく、背景を白に..."}
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 bg-white resize-none"
+                  rows={3}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customText.trim()) {
+                      handleApply();
+                    }
                   }}
-                >
-                  {customText || 'サンプルテキスト'}
-                </span>
+                />
+                <p className="text-xs text-gray-400 mt-1"><span className="text-orange-500 font-medium">10cr</span>/回 テキスト・色・レイアウトなど自由に指示 ⌘+Enter</p>
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* AI Tab */}
-        {activeTab === 'ai' && (
-          <div className="p-4 space-y-4">
-                {/* Output Size */}
-                <div>
-                  <label className="text-xs font-medium text-gray-500 mb-2 block">出力品質</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['1K', '2K', '4K'] as const).map((size) => (
-                      <button
-                        key={size}
-                        onClick={() => setOutputSize(size)}
-                        className={cn(
-                          'py-2 text-sm font-medium rounded-md border transition-colors',
-                          outputSize === size
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                        )}
-                      >
-                        {size}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Reference Design */}
-                <div>
-                  <label className="text-xs font-medium text-gray-500 mb-2 block">参考デザイン（任意）</label>
-                  {referenceImage ? (
-                    <div className="relative rounded-lg overflow-hidden border border-gray-200">
-                      <img
-                        src={referenceImage}
-                        alt="参考デザイン"
-                        className="w-full h-28 object-cover"
-                      />
-                      <button
-                        onClick={clearReferenceImage}
-                        className="absolute top-2 right-2 p-1.5 bg-white/90 rounded-md shadow-sm hover:bg-white"
-                      >
-                        <X className="w-4 h-4 text-gray-600" />
-                      </button>
-                      {isAnalyzingDesign && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-                          <Loader2 className="w-6 h-6 text-gray-500 animate-spin" />
-                        </div>
-                      )}
-                      {referenceDesign && !isAnalyzingDesign && (
-                        <div className="absolute bottom-0 left-0 right-0 p-2 bg-black/60">
-                          <p className="text-xs text-white font-medium">{referenceDesign.vibe}</p>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full py-6 border border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-gray-400 hover:bg-gray-50 transition-colors flex flex-col items-center gap-2"
-                    >
-                      <ImagePlus className="w-6 h-6" />
-                      <span className="text-sm font-medium">画像をアップロード</span>
-                    </button>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleReferenceImageUpload}
-                    className="hidden"
-                  />
-                </div>
-
-            {/* AI Tips */}
-            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="flex items-start gap-2">
-                <Info className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                <div className="text-xs text-gray-600">
-                  <p className="font-medium mb-1">AI修正のヒント</p>
-                  <ul className="space-y-0.5 text-gray-500">
-                    <li>・文字化けの修正に最適</li>
-                    <li>・背景に合わせて自然に生成</li>
-                    <li>・参考画像でスタイルを指定可能</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Actions - Fixed at bottom */}
@@ -1119,37 +953,22 @@ export function FixQueuePanel({
         <button
           onClick={handleApply}
           disabled={isApplying || currentIssue.status === 'corrected' || (isObjectMode ? !objectPrompt.trim() : !customText.trim())}
-          className={cn(
-            'w-full py-3 text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-white',
-            (!isObjectMode && correctionMethod === 'text_overlay')
-              ? 'bg-green-600 hover:bg-green-700'
-              : 'bg-blue-600 hover:bg-blue-700'
-          )}
+          className="w-full py-3 text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-white bg-blue-600 hover:bg-blue-700"
         >
           {isApplying ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              {(isObjectMode || correctionMethod === 'ai_inpaint') ? 'AI生成中...' : '適用中...'}
+              修正中...
             </>
           ) : currentIssue.status === 'corrected' ? (
             <>
               <CheckCircle2 className="w-4 h-4" />
               修正済み
             </>
-          ) : isObjectMode ? (
-            <>
-              <Zap className="w-4 h-4" />
-              AI編集を実行
-            </>
-          ) : correctionMethod === 'ai_inpaint' ? (
-            <>
-              <Zap className="w-4 h-4" />
-              AI修正を実行
-            </>
           ) : (
             <>
-              <Type className="w-4 h-4" />
-              テキストを上書き
+              <Zap className="w-4 h-4" />
+              修正を実行（10cr）
             </>
           )}
         </button>
@@ -1163,6 +982,46 @@ export function FixQueuePanel({
           スキップ
         </button>
       </div>
+
+      {/* Cost confirmation dialog */}
+      {costConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden border border-gray-200">
+            <div className="p-5">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
+                  <Zap className="w-5 h-5 text-orange-500" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">クレジット消費の確認</h3>
+                  <p className="text-xs text-gray-400">実行前にご確認ください</p>
+                </div>
+              </div>
+              <p className="text-sm text-gray-700 mb-3">{costConfirm.message}</p>
+              <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
+                <p className="text-sm font-semibold text-orange-800 text-center">
+                  消費: <span className="text-lg">{costConfirm.cost}</span> クレジット
+                </p>
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex gap-2">
+              <button
+                onClick={() => setCostConfirm(null)}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={costConfirm.onConfirm}
+                className="flex-1 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                実行する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
