@@ -254,6 +254,8 @@ export async function getCreditsInfo(): Promise<CreditsInfo | null> {
   });
 
   if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    console.error('[getCreditsInfo] failed:', response.status, err);
     return null;
   }
 
