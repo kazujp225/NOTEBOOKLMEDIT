@@ -9,6 +9,8 @@ import { AuthForm } from '@/components/auth/AuthForm';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useAppStore, type Project } from '@/lib/store';
 import { getImage } from '@/lib/image-store';
+import { downloadImageFromCloud } from '@/lib/sync';
+import { useSync } from '@/hooks/useSync';
 import { formatDate } from '@/lib/utils';
 import {
   FileText,
@@ -17,6 +19,9 @@ import {
   ChevronRight,
   LogOut,
   Loader2,
+  Cloud,
+  CloudOff,
+  RefreshCw,
 } from 'lucide-react';
 
 function ProjectThumbnail({ project }: { project: Project }) {
@@ -26,8 +31,14 @@ function ProjectThumbnail({ project }: { project: Project }) {
     const firstPage = project.pages[0];
     if (!firstPage) return;
 
-    getImage(firstPage.imageKey).then((url) => {
-      if (url) setThumbnailUrl(url);
+    // Try IndexedDB first, then cloud fallback
+    getImage(firstPage.imageKey).then(async (url) => {
+      if (url) {
+        setThumbnailUrl(url);
+      } else if (firstPage.cloudImagePath) {
+        const cloudUrl = await downloadImageFromCloud(firstPage.cloudImagePath);
+        if (cloudUrl) setThumbnailUrl(cloudUrl);
+      }
     }).catch(() => {});
   }, [project.id, project.pages]);
 
@@ -50,12 +61,22 @@ function ProjectThumbnail({ project }: { project: Project }) {
   );
 }
 
+function SyncStatusIcon({ status }: { status?: string }) {
+  if (status === 'synced') return <Cloud className="w-3.5 h-3.5 text-green-500" />;
+  if (status === 'pending') return <RefreshCw className="w-3.5 h-3.5 text-yellow-500 animate-spin" />;
+  if (status === 'error') return <CloudOff className="w-3.5 h-3.5 text-red-400" />;
+  return null;
+}
+
 export default function HomePage() {
   const router = useRouter();
   const { user, isLoading: authLoading, signOut } = useAuth();
   const projects = useAppStore((state) => state.projects);
   const deleteProject = useAppStore((state) => state.deleteProject);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+
+  // Trigger cloud sync on login
+  useSync(user?.id);
 
   useEffect(() => {
     // Projects are loaded from localStorage via Zustand
@@ -170,6 +191,7 @@ export default function HomePage() {
 
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <SyncStatusIcon status={project.syncStatus} />
                         <span>{project.pages.length}ページ</span>
                         <span>•</span>
                         <span>{formatDate(project.createdAt)}</span>
