@@ -13,6 +13,8 @@ import { useToast } from '@/components/ui/Toast';
 import { useAppStore, generateId, type Issue, type BBox, type PageData, type ProjectWithImages, type TextOverlay } from '@/lib/store';
 import { saveImage, getImage } from '@/lib/image-store';
 import { getCreditsInfo } from '@/lib/gemini';
+import { syncPageImage } from '@/lib/sync';
+import { getCurrentUserId } from '@/lib/supabase';
 
 interface EditorProps {
   projectId: string;
@@ -307,6 +309,14 @@ export function Editor({ projectId }: EditorProps) {
       // Save new image to IndexedDB
       const imageKey = `${projectId}/page-${currentPageNumber}`;
       await saveImage(imageKey, newImageDataUrl);
+
+      // Sync edited image to cloud (background)
+      getCurrentUserId().then((uid) => {
+        if (!uid) return;
+        syncPageImage(uid, projectId, currentPageNumber, newImageDataUrl).catch((err) =>
+          console.warn('[sync] page image sync failed:', err)
+        );
+      });
 
       // Update local state
       setProject((prev) => {
@@ -754,6 +764,14 @@ export function Editor({ projectId }: EditorProps) {
 
         // Save the new image
         await saveImage(imageKey, result.imageBase64);
+
+        // Sync to cloud (background)
+        getCurrentUserId().then((uid) => {
+          if (!uid) return;
+          syncPageImage(uid, projectId, page.pageNumber, result.imageBase64!).catch((err) =>
+            console.warn('[sync] batch page image sync failed:', err)
+          );
+        });
 
         // Update local state
         setProject((prev) => {
