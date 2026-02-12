@@ -4,27 +4,31 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Users, BarChart3, Activity, Loader2, RefreshCw,
   Plus, Minus, Search, Check, AlertCircle, X,
+  Ban, ShieldCheck, Key, ChevronLeft, Eye,
+  Settings2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   fetchAdminUsers, fetchUsageStats, fetchRecentActivity,
-  adjustCredits, type AdminUser, type UsageStats, type RecentActivity,
+  fetchUserDetail, adjustCredits, banUser, resetPassword,
+  type AdminUser, type UsageStats, type RecentActivity, type UserDetail,
 } from '@/lib/admin';
 
-type SubTab = 'users' | 'stats' | 'activity';
+type SubTab = 'users' | 'stats' | 'activity' | 'settings';
 
 export function AdminTab() {
   const [subTab, setSubTab] = useState<SubTab>('users');
 
   const subTabs: { id: SubTab; label: string; icon: typeof Users }[] = [
-    { id: 'users', label: 'ユーザー', icon: Users },
+    { id: 'users', label: 'ユーザー管理', icon: Users },
     { id: 'stats', label: '統計', icon: BarChart3 },
     { id: 'activity', label: 'アクティビティ', icon: Activity },
+    { id: 'settings', label: 'グローバル設定', icon: Settings2 },
   ];
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         {subTabs.map((tab) => (
           <button
             key={tab.id}
@@ -45,22 +49,19 @@ export function AdminTab() {
       {subTab === 'users' && <UsersPanel />}
       {subTab === 'stats' && <StatsPanel />}
       {subTab === 'activity' && <ActivityPanel />}
+      {subTab === 'settings' && <SettingsPanel />}
     </div>
   );
 }
 
 // ============================================
-// Users Panel
+// Users Panel (ユーザー管理)
 // ============================================
 function UsersPanel() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
-  const [adjustAmount, setAdjustAmount] = useState('');
-  const [adjustDesc, setAdjustDesc] = useState('');
-  const [adjusting, setAdjusting] = useState(false);
-  const [adjustResult, setAdjustResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -80,40 +81,15 @@ function UsersPanel() {
     u.email.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleAdjust = async (isAdd: boolean) => {
-    if (!selectedUser || !adjustAmount) return;
-    const amount = parseInt(adjustAmount) * (isAdd ? 1 : -1);
-    if (isNaN(amount) || amount === 0) return;
-
-    setAdjusting(true);
-    setAdjustResult(null);
-    try {
-      const result = await adjustCredits(
-        selectedUser.id,
-        amount,
-        adjustDesc || `管理者による${isAdd ? '付与' : '減算'}`
-      );
-      if (result.success) {
-        setAdjustResult({
-          success: true,
-          message: `${isAdd ? '+' : '-'}${Math.abs(amount)}cr → 残高: ${result.balance_after}cr`,
-        });
-        setAdjustAmount('');
-        setAdjustDesc('');
-        // Refresh user list
-        loadUsers();
-      } else {
-        setAdjustResult({ success: false, message: result.error || 'エラー' });
-      }
-    } catch (err) {
-      setAdjustResult({
-        success: false,
-        message: err instanceof Error ? err.message : 'エラー',
-      });
-    } finally {
-      setAdjusting(false);
-    }
-  };
+  // User detail view
+  if (selectedUserId) {
+    return (
+      <UserDetailPanel
+        userId={selectedUserId}
+        onBack={() => { setSelectedUserId(null); loadUsers(); }}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -142,23 +118,29 @@ function UsersPanel() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 text-gray-500 text-xs">
+              <th className="text-left px-4 py-2.5 font-medium">ステータス</th>
               <th className="text-left px-4 py-2.5 font-medium">メール</th>
               <th className="text-right px-4 py-2.5 font-medium">残高</th>
-              <th className="text-right px-4 py-2.5 font-medium">画像生成</th>
+              <th className="text-right px-4 py-2.5 font-medium">画像</th>
               <th className="text-right px-4 py-2.5 font-medium">テキスト</th>
               <th className="text-right px-4 py-2.5 font-medium">登録日</th>
+              <th className="text-center px-4 py-2.5 font-medium">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {filteredUsers.map((user) => (
-              <tr
-                key={user.id}
-                onClick={() => setSelectedUser(selectedUser?.id === user.id ? null : user)}
-                className={cn(
-                  'cursor-pointer transition-colors',
-                  selectedUser?.id === user.id ? 'bg-blue-50' : 'hover:bg-gray-50'
-                )}
-              >
+              <tr key={user.id} className="hover:bg-gray-50">
+                <td className="px-4 py-2.5">
+                  {user.is_banned ? (
+                    <span className="inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700">
+                      BAN
+                    </span>
+                  ) : (
+                    <span className="inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700">
+                      有効
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-2.5 text-gray-900">{user.email}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums font-medium">
                   {user.balance}
@@ -172,6 +154,15 @@ function UsersPanel() {
                 <td className="px-4 py-2.5 text-right text-gray-400 text-xs">
                   {new Date(user.created_at).toLocaleDateString('ja-JP')}
                 </td>
+                <td className="px-4 py-2.5 text-center">
+                  <button
+                    onClick={() => setSelectedUserId(user.id)}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                  >
+                    <Eye className="w-3 h-3" />
+                    詳細
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -183,21 +174,154 @@ function UsersPanel() {
         )}
       </div>
 
-      {/* Credit adjustment panel */}
-      {selectedUser && (
-        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-900">{selectedUser.email}</p>
-              <p className="text-xs text-gray-400">
-                現在の残高: <span className="font-medium text-gray-700">{selectedUser.balance}cr</span>
-              </p>
-            </div>
-            <button onClick={() => setSelectedUser(null)} className="p-1 hover:bg-gray-100 rounded">
-              <X className="w-4 h-4 text-gray-400" />
-            </button>
-          </div>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-400">{filteredUsers.length}件</p>
+        <button onClick={loadUsers} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600">
+          <RefreshCw className="w-3 h-3" />
+          更新
+        </button>
+      </div>
+    </div>
+  );
+}
 
+// ============================================
+// User Detail Panel (個別ユーザー詳細)
+// ============================================
+function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => void }) {
+  const [detail, setDetail] = useState<UserDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Credit adjustment
+  const [adjustAmount, setAdjustAmount] = useState('');
+  const [adjustDesc, setAdjustDesc] = useState('');
+
+  // Password reset
+  const [newPassword, setNewPassword] = useState('');
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+
+  const loadDetail = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchUserDetail(userId);
+      setDetail(data);
+    } catch (err) {
+      console.error('Failed to load user detail:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => { loadDetail(); }, [loadDetail]);
+
+  const showMessage = (type: 'success' | 'error', text: string) => {
+    setMessage({ type, text });
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  const handleAdjust = async (isAdd: boolean) => {
+    if (!adjustAmount) return;
+    const amount = parseInt(adjustAmount) * (isAdd ? 1 : -1);
+    if (isNaN(amount) || amount === 0) return;
+
+    setActionLoading(true);
+    try {
+      const result = await adjustCredits(userId, amount, adjustDesc || `管理者による${isAdd ? '付与' : '減算'}`);
+      if (result.success) {
+        showMessage('success', `${isAdd ? '+' : '-'}${Math.abs(amount)}cr → 残高: ${result.balance_after}cr`);
+        setAdjustAmount('');
+        setAdjustDesc('');
+        loadDetail();
+      } else {
+        showMessage('error', result.error || 'エラー');
+      }
+    } catch (err) {
+      showMessage('error', err instanceof Error ? err.message : 'エラー');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleBan = async (ban: boolean) => {
+    if (!confirm(ban ? 'このユーザーをBANしますか？' : 'BAN解除しますか？')) return;
+    setActionLoading(true);
+    try {
+      await banUser(userId, ban);
+      showMessage('success', ban ? 'BANしました' : 'BAN解除しました');
+      loadDetail();
+    } catch (err) {
+      showMessage('error', err instanceof Error ? err.message : 'エラー');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      showMessage('error', 'パスワードは6文字以上必要です');
+      return;
+    }
+    if (!confirm('パスワードを強制変更しますか？')) return;
+    setActionLoading(true);
+    try {
+      await resetPassword(userId, newPassword);
+      showMessage('success', 'パスワードを変更しました');
+      setNewPassword('');
+      setShowPasswordForm(false);
+    } catch (err) {
+      showMessage('error', err instanceof Error ? err.message : 'エラー');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (loading || !detail) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  const isBanned = detail.user.banned_until && new Date(detail.user.banned_until) > new Date();
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button onClick={onBack} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+          <ChevronLeft className="w-4 h-4 text-gray-500" />
+        </button>
+        <div className="flex-1">
+          <h3 className="text-sm font-medium text-gray-900">{detail.user.email}</h3>
+          <p className="text-xs text-gray-400">
+            登録: {new Date(detail.user.created_at).toLocaleDateString('ja-JP')}
+            {isBanned && <span className="ml-2 text-red-500 font-medium">BAN中</span>}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-2xl font-semibold tabular-nums text-gray-900">
+          {detail.balance}<span className="text-sm font-normal text-gray-400">cr</span>
+        </div>
+      </div>
+
+      {/* Message */}
+      {message && (
+        <div className={cn(
+          'flex items-center gap-2 px-3 py-2 rounded-lg text-sm',
+          message.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+        )}>
+          {message.type === 'success' ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+          {message.text}
+        </div>
+      )}
+
+      {/* Action cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Credit adjustment */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+          <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider">クレジット操作</h4>
           <div className="flex gap-2">
             <input
               type="number"
@@ -209,49 +333,149 @@ function UsersPanel() {
             />
             <input
               type="text"
-              placeholder="理由（任意）"
+              placeholder="理由"
               value={adjustDesc}
               onChange={(e) => setAdjustDesc(e.target.value)}
               className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300"
             />
           </div>
-
           <div className="flex gap-2">
             <button
               onClick={() => handleAdjust(true)}
-              disabled={adjusting || !adjustAmount}
+              disabled={actionLoading || !adjustAmount}
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
             >
-              {adjusting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-              付与
+              <Plus className="w-3.5 h-3.5" /> 付与
             </button>
             <button
               onClick={() => handleAdjust(false)}
-              disabled={adjusting || !adjustAmount}
+              disabled={actionLoading || !adjustAmount}
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
             >
-              {adjusting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Minus className="w-3.5 h-3.5" />}
-              減算
+              <Minus className="w-3.5 h-3.5" /> 減算
             </button>
           </div>
+        </div>
 
-          {adjustResult && (
-            <div className={cn(
-              'flex items-center gap-2 px-3 py-2 rounded-lg text-sm',
-              adjustResult.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-            )}>
-              {adjustResult.success ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-              {adjustResult.message}
-            </div>
+        {/* Account management */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+          <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider">アカウント管理</h4>
+          <div className="space-y-2">
+            {isBanned ? (
+              <button
+                onClick={() => handleBan(false)}
+                disabled={actionLoading}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" /> BAN解除
+              </button>
+            ) : (
+              <button
+                onClick={() => handleBan(true)}
+                disabled={actionLoading}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                <Ban className="w-3.5 h-3.5" /> ユーザーをBAN
+              </button>
+            )}
+
+            {showPasswordForm ? (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="新しいパスワード"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300"
+                />
+                <button
+                  onClick={handleResetPassword}
+                  disabled={actionLoading || !newPassword}
+                  className="px-3 py-2 text-sm bg-[#0d0d0d] text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                >
+                  設定
+                </button>
+                <button
+                  onClick={() => { setShowPasswordForm(false); setNewPassword(''); }}
+                  className="px-2 py-2 text-sm text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowPasswordForm(true)}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                <Key className="w-3.5 h-3.5" /> パスワード強制変更
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Transaction history */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+          <h4 className="text-xs font-medium text-gray-500">クレジット履歴</h4>
+        </div>
+        <div className="divide-y divide-gray-50 max-h-[240px] overflow-y-auto">
+          {detail.transactions.length === 0 ? (
+            <div className="text-center py-6 text-gray-400 text-xs">履歴なし</div>
+          ) : (
+            detail.transactions.map((tx, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-gray-700 truncate">{tx.description || tx.transaction_type}</p>
+                  <p className="text-[10px] text-gray-400">
+                    {new Date(tx.created_at).toLocaleString('ja-JP')}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className={cn('text-xs font-medium tabular-nums', tx.transaction_type === 'deduct' ? 'text-red-500' : 'text-emerald-500')}>
+                    {tx.transaction_type === 'deduct' ? '-' : '+'}{tx.amount}
+                  </p>
+                  <p className="text-[10px] text-gray-400 tabular-nums">{tx.balance_after}</p>
+                </div>
+              </div>
+            ))
           )}
         </div>
-      )}
+      </div>
 
-      <div className="flex justify-end">
-        <button onClick={loadUsers} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600">
-          <RefreshCw className="w-3 h-3" />
-          更新
-        </button>
+      {/* Request history */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+          <h4 className="text-xs font-medium text-gray-500">API利用履歴</h4>
+        </div>
+        <div className="divide-y divide-gray-50 max-h-[240px] overflow-y-auto">
+          {detail.requests.length === 0 ? (
+            <div className="text-center py-6 text-gray-400 text-xs">履歴なし</div>
+          ) : (
+            detail.requests.map((req, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                <span className={cn(
+                  'inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium',
+                  req.request_type === 'image_generation' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'
+                )}>
+                  {req.request_type === 'image_generation' ? '画像' : 'テキスト'}
+                </span>
+                <span className={cn(
+                  'inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium',
+                  req.status === 'completed' ? 'bg-emerald-50 text-emerald-700' :
+                  req.status === 'failed' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'
+                )}>
+                  {req.status === 'completed' ? '完了' : req.status === 'failed' ? '失敗' : req.status}
+                </span>
+                <div className="flex-1" />
+                <span className="text-xs text-gray-500 tabular-nums">{req.cost}cr</span>
+                <span className="text-[10px] text-gray-400">
+                  {new Date(req.created_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
@@ -401,6 +625,63 @@ function ActivityPanel() {
           <RefreshCw className="w-3 h-3" />
           更新
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// Global Settings Panel
+// ============================================
+function SettingsPanel() {
+  return (
+    <div className="space-y-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h3 className="text-sm font-medium text-gray-900 mb-4">クレジット設定</h3>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between py-2 border-b border-gray-50">
+            <span className="text-sm text-gray-600">初回登録クレジット</span>
+            <span className="text-sm font-medium text-gray-900 tabular-nums">100 cr</span>
+          </div>
+          <div className="flex items-center justify-between py-2 border-b border-gray-50">
+            <span className="text-sm text-gray-600">画像生成コスト</span>
+            <span className="text-sm font-medium text-gray-900 tabular-nums">10 cr / 回</span>
+          </div>
+          <div className="flex items-center justify-between py-2 border-b border-gray-50">
+            <span className="text-sm text-gray-600">テキスト生成コスト</span>
+            <span className="text-sm font-medium text-gray-900 tabular-nums">1 cr / 回</span>
+          </div>
+        </div>
+        <p className="text-xs text-gray-400 mt-4">
+          設定値の変更はコードの修正が必要です（route.ts の COSTS定数、supabase_setup.sql の handle_new_user関数）
+        </p>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h3 className="text-sm font-medium text-gray-900 mb-4">APIモデル</h3>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between py-2 border-b border-gray-50">
+            <span className="text-sm text-gray-600">画像生成モデル</span>
+            <span className="text-xs font-mono text-gray-500">gemini-3-pro-image-preview</span>
+          </div>
+          <div className="flex items-center justify-between py-2 border-b border-gray-50">
+            <span className="text-sm text-gray-600">テキスト生成モデル</span>
+            <span className="text-xs font-mono text-gray-500">gemini-2.0-flash</span>
+          </div>
+          <div className="flex items-center justify-between py-2 border-b border-gray-50">
+            <span className="text-sm text-gray-600">出力画像サイズ</span>
+            <span className="text-sm font-medium text-gray-900">4K（デフォルト）</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h3 className="text-sm font-medium text-gray-900 mb-4">課金ポリシー</h3>
+        <div className="space-y-2 text-sm text-gray-600">
+          <p>API処理実行単位課金（計算資源利用型）</p>
+          <p>成功・失敗問わず、処理開始時点でクレジット消費</p>
+          <p>重大不具合時のみ個別判断で補填</p>
+        </div>
       </div>
     </div>
   );

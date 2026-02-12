@@ -89,8 +89,9 @@ export async function GET(request: NextRequest) {
         usageMap.set(req.user_id, current);
       }
 
-      const result = users.map((u: { id: string; email?: string; created_at: string }) => {
+      const result = users.map((u: { id: string; email?: string; created_at: string; banned_until?: string | null }) => {
         const usage = usageMap.get(u.id) || { image: 0, text: 0 };
+        const isBanned = u.banned_until && new Date(u.banned_until) > new Date();
         return {
           id: u.id,
           email: u.email || '',
@@ -99,6 +100,7 @@ export async function GET(request: NextRequest) {
           image_count: usage.image,
           text_count: usage.text,
           total_usage: usage.image + usage.text,
+          is_banned: !!isBanned,
         };
       });
 
@@ -186,6 +188,55 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ activity: result });
     }
 
+    if (action === 'user_detail') {
+      const userId = searchParams.get('user_id');
+      if (!userId) {
+        return NextResponse.json({ error: 'user_id が必要です' }, { status: 400 });
+      }
+
+      // Get user info
+      const { data: { user: targetUser } } = await getSupabase().auth.admin.getUserById(userId);
+      if (!targetUser) {
+        return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 });
+      }
+
+      // Get credits
+      const { data: credits } = await getSupabase()
+        .from('user_credits')
+        .select('balance')
+        .eq('user_id', userId)
+        .single();
+
+      // Get recent transactions
+      const { data: transactions } = await getSupabase()
+        .from('credit_transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      // Get recent generation requests
+      const { data: requests } = await getSupabase()
+        .from('generation_requests')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      return NextResponse.json({
+        user: {
+          id: targetUser.id,
+          email: targetUser.email || '',
+          created_at: targetUser.created_at,
+          banned_until: targetUser.banned_until || null,
+          app_metadata: targetUser.app_metadata,
+        },
+        balance: credits?.balance ?? 0,
+        transactions: transactions || [],
+        requests: requests || [],
+      });
+    }
+
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error) {
     console.error('Admin API error:', error);
@@ -205,6 +256,44 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { action } = body;
+
+    if (action === 'ban_user') {
+      const { user_id, ban } = body; // ban: true = BAN, false = unban
+      if (!user_id || typeof ban !== 'boolean') {
+        return NextResponse.json({ error: 'user_id と ban が必要です' }, { status: 400 });
+      }
+
+      if (ban) {
+        const { error } = await getSupabase().auth.admin.updateUserById(user_id, {
+          ban_duration: '876000h', // ~100 years
+        });
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      } else {
+        const { error } = await getSupabase().auth.admin.updateUserById(user_id, {
+          ban_duration: 'none',
+        });
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true, banned: ban });
+    }
+
+    if (action === 'reset_password') {
+      const { user_id, new_password } = body;
+      if (!user_id || !new_password) {
+        return NextResponse.json({ error: 'user_id と new_password が必要です' }, { status: 400 });
+      }
+      if (new_password.length < 6) {
+        return NextResponse.json({ error: 'パスワードは6文字以上必要です' }, { status: 400 });
+      }
+
+      const { error } = await getSupabase().auth.admin.updateUserById(user_id, {
+        password: new_password,
+      });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+      return NextResponse.json({ success: true });
+    }
 
     if (action === 'adjust_credits') {
       const { user_id, amount, description } = body;
