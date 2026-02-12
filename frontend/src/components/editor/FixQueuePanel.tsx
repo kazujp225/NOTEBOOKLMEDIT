@@ -306,7 +306,7 @@ export function FixQueuePanel({
 
   const handleApply = () => {
     if (!currentIssue) return;
-    const cost = correctionMethod === 'ai_inpaint' || isObjectMode ? 10 : 1;
+    const cost = correctionMethod === 'ai_inpaint' || isObjectMode ? 13 : 1;
     const bal = creditBalance ?? null;
     const insufficient = bal !== null && bal < cost;
     setCostConfirm({
@@ -334,7 +334,7 @@ export function FixQueuePanel({
   };
 
   const confirmBatch = (description: string, prompt: string) => {
-    const cost = totalPages * 10;
+    const cost = totalPages * 13;
     const bal = creditBalance ?? null;
     const insufficient = bal !== null && bal < cost;
     setCostConfirm({
