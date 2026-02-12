@@ -320,3 +320,156 @@ GRANT SELECT ON generation_requests TO authenticated;
 GRANT EXECUTE ON FUNCTION deduct_credits TO service_role;
 GRANT EXECUTE ON FUNCTION refund_credits TO service_role;
 GRANT EXECUTE ON FUNCTION get_user_credits TO authenticated;
+
+-- ============================================
+-- Projects table (プロジェクト)
+-- ============================================
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  total_pages INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'ready',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
+CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at DESC);
+
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can CRUD own projects" ON projects
+  FOR ALL USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+GRANT ALL ON projects TO authenticated;
+
+-- ============================================
+-- Project pages table (ページ情報)
+-- ============================================
+CREATE TABLE IF NOT EXISTS project_pages (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  page_number INTEGER NOT NULL,
+  width INTEGER NOT NULL,
+  height INTEGER NOT NULL,
+  image_path TEXT NOT NULL,
+  thumbnail_path TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(project_id, page_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_pages_project_id ON project_pages(project_id);
+
+ALTER TABLE project_pages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can CRUD own pages" ON project_pages
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM projects WHERE projects.id = project_pages.project_id AND projects.user_id = auth.uid())
+  )
+  WITH CHECK (
+    EXISTS (SELECT 1 FROM projects WHERE projects.id = project_pages.project_id AND projects.user_id = auth.uid())
+  );
+
+GRANT ALL ON project_pages TO authenticated;
+
+-- ============================================
+-- Project issues table (修正対象)
+-- ============================================
+CREATE TABLE IF NOT EXISTS project_issues (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  page_number INTEGER NOT NULL,
+  bbox JSONB NOT NULL,
+  ocr_text TEXT DEFAULT '',
+  issue_type TEXT NOT NULL DEFAULT 'manual',
+  edit_mode TEXT DEFAULT 'text',
+  status TEXT NOT NULL DEFAULT 'detected',
+  corrected_text TEXT,
+  candidates JSONB DEFAULT '[]',
+  confidence REAL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_issues_project_id ON project_issues(project_id);
+
+ALTER TABLE project_issues ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can CRUD own issues" ON project_issues
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM projects WHERE projects.id = project_issues.project_id AND projects.user_id = auth.uid())
+  )
+  WITH CHECK (
+    EXISTS (SELECT 1 FROM projects WHERE projects.id = project_issues.project_id AND projects.user_id = auth.uid())
+  );
+
+GRANT ALL ON project_issues TO authenticated;
+
+-- ============================================
+-- Project text overlays table (テキストオーバーレイ)
+-- ============================================
+CREATE TABLE IF NOT EXISTS project_text_overlays (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  page_number INTEGER NOT NULL,
+  bbox JSONB NOT NULL,
+  text TEXT NOT NULL DEFAULT '',
+  font_size INTEGER DEFAULT 16,
+  font_family TEXT DEFAULT 'sans-serif',
+  font_weight TEXT DEFAULT 'normal',
+  font_style TEXT DEFAULT 'normal',
+  text_decoration TEXT DEFAULT 'none',
+  text_align TEXT DEFAULT 'left',
+  color TEXT DEFAULT '#000000',
+  background_color TEXT DEFAULT 'transparent',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_text_overlays_project_id ON project_text_overlays(project_id);
+
+ALTER TABLE project_text_overlays ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can CRUD own overlays" ON project_text_overlays
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM projects WHERE projects.id = project_text_overlays.project_id AND projects.user_id = auth.uid())
+  )
+  WITH CHECK (
+    EXISTS (SELECT 1 FROM projects WHERE projects.id = project_text_overlays.project_id AND projects.user_id = auth.uid())
+  );
+
+GRANT ALL ON project_text_overlays TO authenticated;
+
+-- ============================================
+-- Storage bucket for project images
+-- ============================================
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('project-images', 'project-images', false)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Users can read own images" ON storage.objects
+  FOR SELECT USING (
+    bucket_id = 'project-images' AND
+    (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+CREATE POLICY "Users can upload own images" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'project-images' AND
+    (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+CREATE POLICY "Users can update own images" ON storage.objects
+  FOR UPDATE USING (
+    bucket_id = 'project-images' AND
+    (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+CREATE POLICY "Users can delete own images" ON storage.objects
+  FOR DELETE USING (
+    bucket_id = 'project-images' AND
+    (storage.foldername(name))[1] = auth.uid()::text
+  );

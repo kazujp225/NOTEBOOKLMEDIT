@@ -5,6 +5,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { saveImage, getImage, deleteProjectImages } from './image-store';
+import {
+  syncProjectToCloud,
+  fetchCloudProjects,
+  fetchCloudProjectFull,
+  downloadImageFromCloud,
+  deleteCloudProject,
+  syncIssue,
+  syncTextOverlay,
+  debouncedSyncMetadata,
+} from './sync';
+import { getCurrentUserId } from './supabase';
 
 export interface BBox {
   x: number;
@@ -55,6 +66,9 @@ export interface PageMeta {
   // Image keys for IndexedDB lookup
   imageKey: string;
   thumbnailKey: string;
+  // Cloud storage paths
+  cloudImagePath?: string;
+  cloudThumbnailPath?: string;
 }
 
 // Full page data with images (for runtime use)
@@ -77,6 +91,10 @@ export interface Project {
   status: 'uploading' | 'processing' | 'ready' | 'completed';
   createdAt: string;
   updatedAt: string;
+  // Cloud sync fields
+  userId?: string;
+  syncStatus?: 'synced' | 'pending' | 'error';
+  lastSyncedAt?: string;
 }
 
 // Runtime project with loaded images
@@ -106,6 +124,10 @@ interface AppState {
   addTextOverlay: (projectId: string, overlay: TextOverlay) => void;
   updateTextOverlay: (projectId: string, overlayId: string, updates: Partial<TextOverlay>) => void;
   deleteTextOverlay: (projectId: string, overlayId: string) => void;
+
+  // Cloud sync actions
+  fetchAndMergeCloudProjects: () => Promise<void>;
+  syncAllProjects: () => Promise<void>;
 }
 
 export const useAppStore = create<AppState>()(
@@ -140,19 +162,47 @@ export const useAppStore = create<AppState>()(
           ...projectMeta,
           pages: pageMetas,
           textOverlays: projectMeta.textOverlays || [],
+          syncStatus: 'pending',
         };
 
         set((state) => ({
           projects: [...state.projects, project],
         }));
+
+        // Background cloud sync
+        getCurrentUserId().then((userId) => {
+          if (!userId) return;
+          const projectToSync = { ...project, userId };
+          syncProjectToCloud(projectToSync, userId)
+            .then(() => {
+              set((state) => ({
+                projects: state.projects.map((p) =>
+                  p.id === project.id
+                    ? { ...p, syncStatus: 'synced' as const, lastSyncedAt: new Date().toISOString(), userId }
+                    : p
+                ),
+              }));
+            })
+            .catch((err) => {
+              console.warn('[sync] project upload failed:', err);
+              set((state) => ({
+                projects: state.projects.map((p) =>
+                  p.id === project.id ? { ...p, syncStatus: 'error' as const } : p
+                ),
+              }));
+            });
+        });
       },
 
-      updateProject: (id, updates) =>
+      updateProject: (id, updates) => {
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === id ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p
           ),
-        })),
+        }));
+        // Debounced background sync
+        debouncedSyncMetadata(id, updates);
+      },
 
       deleteProject: async (id) => {
         // Delete images from IndexedDB
@@ -162,6 +212,14 @@ export const useAppStore = create<AppState>()(
           projects: state.projects.filter((p) => p.id !== id),
           currentProjectId: state.currentProjectId === id ? null : state.currentProjectId,
         }));
+
+        // Background cloud delete
+        getCurrentUserId().then((userId) => {
+          if (!userId) return;
+          deleteCloudProject(id, userId).catch((err) =>
+            console.warn('[sync] cloud delete failed:', err)
+          );
+        });
       },
 
       setCurrentProject: (id) => set({ currentProjectId: id }),
@@ -175,13 +233,27 @@ export const useAppStore = create<AppState>()(
         const project = get().getProject(id);
         if (!project) return null;
 
-        // Load all pages in parallel using stable base64 data URLs
+        // Load all pages in parallel, with cloud fallback
         const pagesWithImages = await Promise.all(
           project.pages.map(async (pageMeta): Promise<PageData | null> => {
-            const [imageDataUrl, thumbnailDataUrl] = await Promise.all([
+            let [imageDataUrl, thumbnailDataUrl] = await Promise.all([
               getImage(pageMeta.imageKey),
               getImage(pageMeta.thumbnailKey),
             ]);
+
+            // Cloud fallback: download from Supabase if not in IndexedDB
+            if (!imageDataUrl && pageMeta.cloudImagePath) {
+              imageDataUrl = await downloadImageFromCloud(pageMeta.cloudImagePath);
+              if (imageDataUrl) {
+                await saveImage(pageMeta.imageKey, imageDataUrl); // Cache locally
+              }
+            }
+            if (!thumbnailDataUrl && pageMeta.cloudThumbnailPath) {
+              thumbnailDataUrl = await downloadImageFromCloud(pageMeta.cloudThumbnailPath);
+              if (thumbnailDataUrl) {
+                await saveImage(pageMeta.thumbnailKey, thumbnailDataUrl); // Cache locally
+              }
+            }
 
             if (imageDataUrl && thumbnailDataUrl) {
               return {
@@ -203,16 +275,20 @@ export const useAppStore = create<AppState>()(
         };
       },
 
-      addIssue: (projectId, issue) =>
+      addIssue: (projectId, issue) => {
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === projectId
               ? { ...p, issues: [...p.issues, issue], updatedAt: new Date().toISOString() }
               : p
           ),
-        })),
+        }));
+        syncIssue(projectId, issue, 'upsert').catch((err) =>
+          console.warn('[sync] issue sync failed:', err)
+        );
+      },
 
-      updateIssue: (projectId, issueId, updates) =>
+      updateIssue: (projectId, issueId, updates) => {
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === projectId
@@ -223,9 +299,20 @@ export const useAppStore = create<AppState>()(
                 }
               : p
           ),
-        })),
+        }));
+        // Find the full updated issue for sync
+        const project = get().getProject(projectId);
+        const updatedIssue = project?.issues.find((i) => i.id === issueId);
+        if (updatedIssue) {
+          syncIssue(projectId, updatedIssue, 'upsert').catch((err) =>
+            console.warn('[sync] issue sync failed:', err)
+          );
+        }
+      },
 
-      deleteIssue: (projectId, issueId) =>
+      deleteIssue: (projectId, issueId) => {
+        const project = get().getProject(projectId);
+        const issue = project?.issues.find((i) => i.id === issueId);
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === projectId
@@ -236,18 +323,28 @@ export const useAppStore = create<AppState>()(
                 }
               : p
           ),
-        })),
+        }));
+        if (issue) {
+          syncIssue(projectId, issue, 'delete').catch((err) =>
+            console.warn('[sync] issue delete sync failed:', err)
+          );
+        }
+      },
 
-      addTextOverlay: (projectId, overlay) =>
+      addTextOverlay: (projectId, overlay) => {
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === projectId
               ? { ...p, textOverlays: [...(p.textOverlays || []), overlay], updatedAt: new Date().toISOString() }
               : p
           ),
-        })),
+        }));
+        syncTextOverlay(projectId, overlay, 'upsert').catch((err) =>
+          console.warn('[sync] overlay sync failed:', err)
+        );
+      },
 
-      updateTextOverlay: (projectId, overlayId, updates) =>
+      updateTextOverlay: (projectId, overlayId, updates) => {
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === projectId
@@ -258,9 +355,19 @@ export const useAppStore = create<AppState>()(
                 }
               : p
           ),
-        })),
+        }));
+        const project = get().getProject(projectId);
+        const updatedOverlay = (project?.textOverlays || []).find((o) => o.id === overlayId);
+        if (updatedOverlay) {
+          syncTextOverlay(projectId, updatedOverlay, 'upsert').catch((err) =>
+            console.warn('[sync] overlay sync failed:', err)
+          );
+        }
+      },
 
-      deleteTextOverlay: (projectId, overlayId) =>
+      deleteTextOverlay: (projectId, overlayId) => {
+        const project = get().getProject(projectId);
+        const overlay = (project?.textOverlays || []).find((o) => o.id === overlayId);
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === projectId
@@ -271,7 +378,78 @@ export const useAppStore = create<AppState>()(
                 }
               : p
           ),
-        })),
+        }));
+        if (overlay) {
+          syncTextOverlay(projectId, overlay, 'delete').catch((err) =>
+            console.warn('[sync] overlay delete sync failed:', err)
+          );
+        }
+      },
+
+      // Cloud sync: fetch cloud projects and merge into local state
+      fetchAndMergeCloudProjects: async () => {
+        const userId = await getCurrentUserId();
+        if (!userId) return;
+
+        const cloudProjects = await fetchCloudProjects(userId);
+        const localProjects = get().projects;
+        const localIds = new Set(localProjects.map((p) => p.id));
+
+        // Find cloud-only projects (not in local)
+        const cloudOnlyIds = cloudProjects.filter((cp) => !localIds.has(cp.id));
+
+        if (cloudOnlyIds.length === 0) return;
+
+        // Fetch full data for cloud-only projects
+        const newProjects: Project[] = [];
+        for (const cp of cloudOnlyIds) {
+          const full = await fetchCloudProjectFull(cp.id);
+          if (full) {
+            newProjects.push({
+              ...full,
+              syncStatus: 'synced',
+              lastSyncedAt: new Date().toISOString(),
+            });
+          }
+        }
+
+        if (newProjects.length > 0) {
+          set((state) => ({
+            projects: [...state.projects, ...newProjects],
+          }));
+        }
+      },
+
+      // Cloud sync: upload all local-only projects to cloud
+      syncAllProjects: async () => {
+        const userId = await getCurrentUserId();
+        if (!userId) return;
+
+        const projects = get().projects;
+        const unsyncedProjects = projects.filter(
+          (p) => !p.syncStatus || p.syncStatus === 'pending' || p.syncStatus === 'error'
+        );
+
+        for (const project of unsyncedProjects) {
+          try {
+            await syncProjectToCloud(project, userId);
+            set((state) => ({
+              projects: state.projects.map((p) =>
+                p.id === project.id
+                  ? { ...p, syncStatus: 'synced' as const, lastSyncedAt: new Date().toISOString(), userId }
+                  : p
+              ),
+            }));
+          } catch (err) {
+            console.warn(`[sync] failed to sync project ${project.id}:`, err);
+            set((state) => ({
+              projects: state.projects.map((p) =>
+                p.id === project.id ? { ...p, syncStatus: 'error' as const } : p
+              ),
+            }));
+          }
+        }
+      },
     }),
     {
       name: 'notebooklm-fixer-storage',

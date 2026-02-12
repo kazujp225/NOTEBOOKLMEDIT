@@ -15,7 +15,7 @@ let db: IDBDatabase | null = null;
 /**
  * Convert a data URL to a Blob
  */
-function dataUrlToBlob(dataUrl: string): Blob {
+export function dataUrlToBlob(dataUrl: string): Blob {
   const parts = dataUrl.split(',');
   const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/png';
   const bstr = atob(parts[1]);
@@ -29,7 +29,7 @@ function dataUrlToBlob(dataUrl: string): Blob {
 /**
  * Convert a Blob to a data URL
  */
-function blobToDataUrl(blob: Blob): Promise<string> {
+export function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
