@@ -13,10 +13,6 @@ import { useSync } from '@/hooks/useSync';
 import { formatDate, cn } from '@/lib/utils';
 import {
   getCreditsInfo,
-  getGeminiApiKey,
-  setGeminiApiKey,
-  removeGeminiApiKey,
-  validateApiKey,
   type CreditsInfo,
 } from '@/lib/gemini';
 import { checkAdminStatus } from '@/lib/admin';
@@ -34,13 +30,8 @@ import {
   Settings,
   FileCheck,
   Coins,
-  ArrowUp,
   Gift,
-  Eye,
-  EyeOff,
   Check,
-  AlertCircle,
-  ExternalLink,
   Zap,
   TrendingDown,
   Plus,
@@ -460,15 +451,12 @@ function UsageTab() {
               <div key={i} className="flex items-center gap-3 px-5 py-3">
                 <div className={cn(
                   'w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0',
-                  tx.transaction_type === 'deduct' ? 'bg-red-50' :
-                  tx.transaction_type === 'refund' ? 'bg-blue-50' : 'bg-blue-50'
+                  tx.transaction_type === 'deduct' ? 'bg-red-50' : 'bg-emerald-50'
                 )}>
                   {tx.transaction_type === 'deduct' ? (
                     <TrendingDown className="w-3.5 h-3.5 text-red-500" />
-                  ) : tx.transaction_type === 'refund' ? (
-                    <ArrowUp className="w-3.5 h-3.5 text-blue-500" />
                   ) : (
-                    <Gift className="w-3.5 h-3.5 text-blue-500" />
+                    <Gift className="w-3.5 h-3.5 text-emerald-500" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -499,109 +487,24 @@ function UsageTab() {
 // ============================================
 
 function SettingsTab() {
-  const [apiKey, setApiKeyState] = useState('');
-  const [showKey, setShowKey] = useState(false);
-  const [isValidating, setIsValidating] = useState(false);
-  const [validationStatus, setValidationStatus] = useState<'idle' | 'valid' | 'invalid'>('idle');
-  const [hasExistingKey, setHasExistingKey] = useState(false);
-
-  useEffect(() => {
-    const existingKey = getGeminiApiKey();
-    if (existingKey) {
-      setApiKeyState(existingKey);
-      setHasExistingKey(true);
-      setValidationStatus('valid');
-    }
-  }, []);
-
-  const handleSave = async () => {
-    if (!apiKey.trim()) { setValidationStatus('invalid'); return; }
-    setIsValidating(true);
-    setValidationStatus('idle');
-    const isValid = await validateApiKey(apiKey.trim());
-    if (isValid) { setGeminiApiKey(apiKey.trim()); setValidationStatus('valid'); setHasExistingKey(true); }
-    else { setValidationStatus('invalid'); }
-    setIsValidating(false);
-  };
-
-  const handleRemove = () => {
-    removeGeminiApiKey();
-    setApiKeyState('');
-    setHasExistingKey(false);
-    setValidationStatus('idle');
-  };
-
   return (
     <div>
       <h2 className="text-lg font-semibold text-gray-900 mb-8">Settings</h2>
 
-      {/* API Key */}
+      {/* API Configuration */}
       <div className="bg-white border border-gray-200 rounded-xl mb-6">
         <div className="px-6 py-4 border-b border-gray-100">
-          <h3 className="text-sm font-medium text-gray-900">API Keys</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Gemini APIキーの管理</p>
+          <h3 className="text-sm font-medium text-gray-900">API設定</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Gemini APIの接続状況</p>
         </div>
-        <div className="p-6 space-y-4">
-          <div className="flex items-start gap-3 p-3 bg-amber-50/50 border border-amber-100 rounded-lg">
-            <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-700">
-              APIキーはブラウザにのみ保存されます。サーバーには送信されません。
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Gemini API Key</label>
-            <div className="relative">
-              <input
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={(e) => { setApiKeyState(e.target.value); setValidationStatus('idle'); }}
-                placeholder="AIza..."
-                className={cn(
-                  'w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-1 pr-16 font-mono',
-                  validationStatus === 'valid' ? 'border-emerald-300 focus:ring-emerald-500' :
-                  validationStatus === 'invalid' ? 'border-red-300 focus:ring-red-500' :
-                  'border-gray-200 focus:ring-gray-400'
-                )}
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
-              >
-                {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-            {validationStatus === 'valid' && (
-              <p className="mt-1.5 text-xs text-emerald-600 flex items-center gap-1"><Check className="w-3 h-3" /> 有効</p>
-            )}
-            {validationStatus === 'invalid' && (
-              <p className="mt-1.5 text-xs text-red-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> 無効なキーです</p>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between">
-            <a
-              href="https://aistudio.google.com/app/apikey"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
-            >
-              Google AI Studio <ExternalLink className="w-3 h-3" />
-            </a>
-            <div className="flex gap-2">
-              {hasExistingKey && (
-                <button onClick={handleRemove} className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                  削除
-                </button>
-              )}
-              <button
-                onClick={handleSave}
-                disabled={isValidating || !apiKey.trim()}
-                className="px-4 py-1.5 text-xs font-medium text-white bg-[#0d0d0d] hover:bg-[#1a1a1a] disabled:opacity-40 rounded-lg transition-colors flex items-center gap-1.5"
-              >
-                {isValidating ? <><Loader2 className="w-3 h-3 animate-spin" /> 検証中</> : '保存'}
-              </button>
+        <div className="p-6">
+          <div className="flex items-start gap-3 p-3 bg-emerald-50/50 border border-emerald-100 rounded-lg">
+            <Check className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-medium text-emerald-700">サーバー管理のAPIキーを使用中</p>
+              <p className="text-xs text-emerald-600 mt-0.5">
+                APIキーはサーバー側で安全に管理されています。個別の設定は不要です。
+              </p>
             </div>
           </div>
         </div>
