@@ -262,26 +262,3 @@ export async function getCreditsInfo(): Promise<CreditsInfo | null> {
   return response.json();
 }
 
-// Legacy functions for backward compatibility
-export function getGeminiApiKey(): string | null {
-  return null;
-}
-
-export function setGeminiApiKey(_key: string): void {
-  // No-op
-}
-
-export function removeGeminiApiKey(): void {
-  // No-op
-}
-
-export function hasGeminiApiKey(): boolean {
-  return true;
-}
-
-export async function validateApiKey(_apiKey: string): Promise<boolean> {
-  return true;
-}
-
-// Alias for backward compatibility
-export const getUsageInfo = getCreditsInfo;
