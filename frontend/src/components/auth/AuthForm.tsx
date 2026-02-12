@@ -76,47 +76,39 @@ export function AuthForm({ onSuccess }: AuthFormProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen bg-white flex items-center justify-center p-4">
+      <div className="relative w-full max-w-sm">
         {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="w-12 h-12 bg-gray-900 rounded-xl mx-auto mb-4 flex items-center justify-center">
-            <span className="text-xl font-bold text-white">助</span>
+        <div className="text-center mb-10">
+          <div className="w-14 h-14 bg-[#0d0d0d] rounded-2xl mx-auto mb-5 flex items-center justify-center shadow-lg">
+            <span className="text-2xl font-bold text-white">助</span>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900">オタスケPDF</h1>
-          <p className="text-sm text-gray-500 mt-1">PDF文字化け修正</p>
+          <h1 className="text-xl font-semibold text-gray-900 tracking-tight">オタスケPDF</h1>
+          <p className="text-sm text-gray-400 mt-1.5">PDF文字化け修正ツール</p>
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
           {/* Tab */}
           <div className="flex border-b border-gray-200 mb-6">
             <button
-              onClick={() => {
-                setMode('login');
-                setError(null);
-                setMessage(null);
-              }}
+              onClick={() => { setMode('login'); setError(null); setMessage(null); }}
               className={cn(
                 'flex-1 pb-3 text-sm font-medium border-b-2 -mb-px transition-colors',
                 mode === 'login'
                   ? 'border-gray-900 text-gray-900'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  : 'border-transparent text-gray-400 hover:text-gray-600'
               )}
             >
               ログイン
             </button>
             <button
-              onClick={() => {
-                setMode('signup');
-                setError(null);
-                setMessage(null);
-              }}
+              onClick={() => { setMode('signup'); setError(null); setMessage(null); }}
               className={cn(
                 'flex-1 pb-3 text-sm font-medium border-b-2 -mb-px transition-colors',
                 mode === 'signup'
                   ? 'border-gray-900 text-gray-900'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  : 'border-transparent text-gray-400 hover:text-gray-600'
               )}
             >
               新規登録
@@ -127,54 +119,54 @@ export function AuthForm({ onSuccess }: AuthFormProps) {
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">{error}</p>
+              <p className="text-sm text-red-600">{error}</p>
             </div>
           )}
 
           {/* Success */}
           {message && (
-            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-sm text-green-700">{message}</p>
+            <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <p className="text-sm text-emerald-600">{message}</p>
             </div>
           )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">
                 メールアドレス
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="email@example.com"
-                  className="w-full border border-gray-300 rounded-lg py-2.5 pl-10 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                  className="w-full bg-white border border-gray-200 rounded-lg py-2.5 pl-10 pr-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 transition-colors"
                   autoComplete="email"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">
                 パスワード
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="6文字以上"
-                  className="w-full border border-gray-300 rounded-lg py-2.5 pl-10 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                  className="w-full bg-white border border-gray-200 rounded-lg py-2.5 pl-10 pr-10 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 transition-colors"
                   autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -183,17 +175,17 @@ export function AuthForm({ onSuccess }: AuthFormProps) {
 
             {mode === 'signup' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">
                   パスワード（確認）
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="パスワードを再入力"
-                    className="w-full border border-gray-300 rounded-lg py-2.5 pl-10 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    className="w-full bg-white border border-gray-200 rounded-lg py-2.5 pl-10 pr-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 transition-colors"
                     autoComplete="new-password"
                   />
                 </div>
@@ -203,7 +195,7 @@ export function AuthForm({ onSuccess }: AuthFormProps) {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-gray-900 hover:bg-gray-800 text-white font-medium py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full bg-[#0d0d0d] hover:bg-[#1a1a1a] text-white font-medium py-2.5 px-4 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
             >
               {isLoading ? (
                 <>
@@ -220,7 +212,7 @@ export function AuthForm({ onSuccess }: AuthFormProps) {
         </div>
 
         {/* Footer */}
-        <p className="mt-6 text-xs text-center text-gray-500">
+        <p className="mt-8 text-xs text-center text-gray-300">
           ログインすることで利用規約に同意したものとみなされます
         </p>
       </div>

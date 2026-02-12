@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X, Trash2, Move, Copy, Shapes, Check, AlertCircle, AlertTriangle, Loader2, Type } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X, Trash2, Copy, Shapes, Check, AlertCircle, AlertTriangle, Loader2, Type } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { TextOverlayBox, type ResizeHandle } from './TextOverlayBox';
@@ -599,7 +599,7 @@ export function CanvasViewer({
       )}
 
       {/* Toolbar */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white/95 backdrop-blur rounded-full px-2 py-1.5 shadow-lg border border-gray-200">
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white/95 backdrop-blur-xl rounded-full px-2 py-1.5 shadow-lg border border-gray-200">
         {/* Mode toggle */}
         <Tooltip content="選択モード (既存のIssueをクリック)">
           <button
@@ -607,8 +607,8 @@ export function CanvasViewer({
             className={cn(
               'flex items-center justify-center rounded-full transition-colors',
               mode === 'select'
-                ? 'bg-gray-200 text-gray-900 px-3 h-8 gap-1.5'
-                : 'hover:bg-gray-100 text-gray-500 w-8 h-8'
+                ? 'bg-gray-100 text-gray-900 px-3 h-8 gap-1.5'
+                : 'hover:bg-gray-100 text-gray-400 w-8 h-8'
             )}
             aria-label="選択モード"
           >
@@ -624,7 +624,7 @@ export function CanvasViewer({
               'flex items-center justify-center rounded-full transition-colors',
               mode === 'draw'
                 ? 'bg-blue-500 text-white px-3 h-8 gap-1.5'
-                : 'hover:bg-gray-100 text-gray-500 w-8 h-8'
+                : 'hover:bg-gray-100 text-gray-400 w-8 h-8'
             )}
             aria-label="範囲選択"
           >
@@ -639,8 +639,8 @@ export function CanvasViewer({
             className={cn(
               'flex items-center justify-center rounded-full transition-colors',
               mode === 'text'
-                ? 'bg-green-500 text-white px-3 h-8 gap-1.5'
-                : 'hover:bg-gray-100 text-gray-500 w-8 h-8'
+                ? 'bg-emerald-500 text-white px-3 h-8 gap-1.5'
+                : 'hover:bg-gray-100 text-gray-400 w-8 h-8'
             )}
             aria-label="テキスト追加"
           >
@@ -649,7 +649,7 @@ export function CanvasViewer({
           </button>
         </Tooltip>
 
-        <div className="w-px h-5 bg-gray-300 mx-1" />
+        <div className="w-px h-5 bg-gray-200 mx-1" />
 
         <Tooltip content="縮小 (X)">
           <button
@@ -658,12 +658,12 @@ export function CanvasViewer({
             disabled={zoom <= 0.25}
             aria-label="縮小"
           >
-            <ZoomOut className="w-4 h-4 text-gray-600" />
+            <ZoomOut className="w-4 h-4 text-gray-400" />
           </button>
         </Tooltip>
 
         <div className="px-2 min-w-[60px] text-center">
-          <span className="text-sm font-medium text-gray-700">
+          <span className="text-sm font-medium text-gray-500 tabular-nums">
             {Math.round(zoom * 100)}%
           </span>
         </div>
@@ -675,11 +675,11 @@ export function CanvasViewer({
             disabled={zoom >= 4}
             aria-label="拡大"
           >
-            <ZoomIn className="w-4 h-4 text-gray-600" />
+            <ZoomIn className="w-4 h-4 text-gray-400" />
           </button>
         </Tooltip>
 
-        <div className="w-px h-5 bg-gray-300 mx-1" />
+        <div className="w-px h-5 bg-gray-200 mx-1" />
 
         <Tooltip content="幅に合わせる (F)">
           <button
@@ -687,30 +687,30 @@ export function CanvasViewer({
             className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full transition-colors"
             aria-label="幅に合わせる"
           >
-            <Maximize className="w-4 h-4 text-gray-600" />
+            <Maximize className="w-4 h-4 text-gray-400" />
           </button>
         </Tooltip>
       </div>
 
       {/* Disabled overlay during AI processing */}
       {disabled && (
-        <div className="absolute inset-0 bg-gray-100/80 backdrop-blur-sm z-50 flex items-center justify-center pointer-events-auto">
+        <div className="absolute inset-0 bg-white/80 backdrop-blur-md z-50 flex items-center justify-center pointer-events-auto">
           <div className="flex flex-col items-center gap-5 max-w-sm w-full px-6">
             {/* Spinner */}
-            <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center">
-              <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+            <div className="w-16 h-16 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
             </div>
 
             {/* Title */}
             <div className="text-center">
               <h3 className="text-lg font-semibold text-gray-900">AIが画像を修正しています</h3>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-gray-400 mt-1">
                 しばらくお待ちください... ({elapsedSeconds}秒)
               </p>
             </div>
 
             {/* Progress bar */}
-            <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
               <div
                 className="h-full bg-blue-500 rounded-full animate-pulse"
                 style={{ width: `${Math.min(90, elapsedSeconds * 3)}%`, transition: 'width 1s ease' }}

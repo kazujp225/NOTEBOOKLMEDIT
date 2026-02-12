@@ -21,7 +21,6 @@ import {
 } from '@/lib/gemini';
 import {
   FileText,
-  Clock,
   Trash2,
   LogOut,
   Loader2,
@@ -33,15 +32,17 @@ import {
   Settings,
   FileCheck,
   Coins,
-  ArrowDown,
   ArrowUp,
   Gift,
-  Key,
   Eye,
   EyeOff,
   Check,
   AlertCircle,
   ExternalLink,
+  Zap,
+  TrendingDown,
+  Plus,
+  X,
 } from 'lucide-react';
 
 // ============================================
@@ -67,24 +68,57 @@ function ProjectThumbnail({ project }: { project: Project }) {
 
   if (!thumbnailUrl) {
     return (
-      <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center">
-        <FileText className="w-8 h-8 text-gray-300" />
+      <div className="w-full aspect-[4/3] bg-gray-50 flex items-center justify-center">
+        <FileText className="w-8 h-8 text-gray-200" />
       </div>
     );
   }
 
   return (
-    <div className="w-full aspect-[4/3] bg-gray-100 overflow-hidden">
+    <div className="w-full aspect-[4/3] bg-gray-50 overflow-hidden">
       <img src={thumbnailUrl} alt={project.name} className="w-full h-full object-cover object-top" />
     </div>
   );
 }
 
 function SyncStatusIcon({ status }: { status?: string }) {
-  if (status === 'synced') return <Cloud className="w-3.5 h-3.5 text-green-500" />;
-  if (status === 'pending') return <RefreshCw className="w-3.5 h-3.5 text-yellow-500 animate-spin" />;
-  if (status === 'error') return <CloudOff className="w-3.5 h-3.5 text-red-400" />;
+  if (status === 'synced') return <Cloud className="w-3 h-3 text-emerald-500" />;
+  if (status === 'pending') return <RefreshCw className="w-3 h-3 text-amber-500 animate-spin" />;
+  if (status === 'error') return <CloudOff className="w-3 h-3 text-red-400" />;
   return null;
+}
+
+// ============================================
+// Upload Modal
+// ============================================
+
+function UploadModal({ isOpen, onClose, onUploadComplete }: {
+  isOpen: boolean;
+  onClose: () => void;
+  onUploadComplete: (id: string) => void;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 p-8"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          <X className="w-4 h-4 text-gray-400" />
+        </button>
+        <h2 className="text-lg font-semibold text-gray-900 mb-6">新規プロジェクト</h2>
+        <Uploader onUploadComplete={(id) => { onClose(); onUploadComplete(id); }} />
+      </div>
+    </div>
+  );
 }
 
 // ============================================
@@ -104,73 +138,95 @@ function HomeTab({
   onDeleteProject: (id: string, e: React.MouseEvent) => void;
   onOpenProject: (id: string) => void;
 }) {
+  const [showUploadModal, setShowUploadModal] = useState(false);
+
   return (
     <div>
-      <div className="mb-12">
-        <Uploader onUploadComplete={onUploadComplete} />
+      {/* Header with New Project button */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">プロジェクト</h2>
+          <p className="text-sm text-gray-400 mt-0.5">{projects.length} 件</p>
+        </div>
+        <button
+          onClick={() => setShowUploadModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-[#0d0d0d] hover:bg-[#1a1a1a] text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+        >
+          <Plus className="w-4 h-4" />
+          新規プロジェクト
+        </button>
       </div>
 
-      <div>
-        <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center gap-3">
-          <Clock className="w-5 h-5 text-gray-400" />
-          最近のプロジェクト
-        </h2>
-
-        {isLoadingProjects ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-32 rounded-xl bg-gray-200 animate-pulse" />
-            ))}
+      {/* Project Grid - 3 columns */}
+      {isLoadingProjects ? (
+        <div className="grid grid-cols-3 gap-5">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-56 rounded-xl bg-gray-100 animate-pulse" />
+          ))}
+        </div>
+      ) : projects.length === 0 ? (
+        <div className="border border-dashed border-gray-200 rounded-xl p-16 text-center">
+          <div className="w-14 h-14 bg-gray-50 rounded-xl mx-auto mb-4 flex items-center justify-center">
+            <FileText className="w-7 h-7 text-gray-300" />
           </div>
-        ) : projects.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-gray-500">
-            まだプロジェクトがありません。PDFをアップロードして始めましょう。
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {projects.map((project) => (
-              <div
-                key={project.id}
-                className="bg-white border border-gray-200 rounded-xl overflow-hidden cursor-pointer hover:border-gray-300 hover:shadow-md transition-all group"
-                onClick={() => onOpenProject(project.id)}
-              >
-                <div className="relative">
-                  <ProjectThumbnail project={project} />
-                  <button
-                    onClick={(e) => onDeleteProject(project.id, e)}
-                    className="absolute top-2 right-2 p-1.5 bg-white/80 backdrop-blur-sm hover:bg-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                  >
-                    <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
-                  </button>
-                </div>
-                <div className="p-4">
-                  <h3 className="font-semibold text-gray-900 truncate mb-2 text-sm">{project.name}</h3>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <SyncStatusIcon status={project.syncStatus} />
-                      <span>{project.pages.length}ページ</span>
-                      <span>•</span>
-                      <span>{formatDate(project.createdAt)}</span>
-                    </div>
-                    <Badge
-                      variant={
-                        project.status === 'completed' || project.status === 'ready'
-                          ? 'success'
-                          : project.status === 'processing'
-                          ? 'primary'
-                          : 'default'
-                      }
-                      size="sm"
-                    >
-                      {project.status === 'ready' ? '編集可能' : project.status}
-                    </Badge>
+          <p className="text-sm font-medium text-gray-500 mb-1">まだプロジェクトがありません</p>
+          <p className="text-xs text-gray-400 mb-5">PDFやPPTXをアップロードして始めましょう</p>
+          <button
+            onClick={() => setShowUploadModal(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:border-gray-300 rounded-lg transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            新規作成
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-5">
+          {projects.map((project) => (
+            <div
+              key={project.id}
+              className="bg-white border border-gray-100 rounded-xl overflow-hidden cursor-pointer hover:shadow-lg hover:border-gray-200 transition-all group"
+              onClick={() => onOpenProject(project.id)}
+            >
+              <div className="relative">
+                <ProjectThumbnail project={project} />
+                <button
+                  onClick={(e) => onDeleteProject(project.id, e)}
+                  className="absolute top-2.5 right-2.5 p-1.5 bg-white/90 hover:bg-white rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-sm"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" />
+                </button>
+              </div>
+              <div className="p-4">
+                <h3 className="font-medium text-gray-900 truncate text-sm">{project.name}</h3>
+                <div className="flex items-center justify-between mt-2.5">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <SyncStatusIcon status={project.syncStatus} />
+                    <span className="tabular-nums">{project.pages.length}p</span>
+                    <span className="text-gray-200">·</span>
+                    <span>{formatDate(project.createdAt)}</span>
                   </div>
+                  <Badge
+                    variant={
+                      project.status === 'completed' || project.status === 'ready' ? 'success' :
+                      project.status === 'processing' ? 'primary' : 'default'
+                    }
+                    size="sm"
+                  >
+                    {project.status === 'ready' ? '編集可能' : project.status}
+                  </Badge>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Upload Modal */}
+      <UploadModal
+        isOpen={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onUploadComplete={onUploadComplete}
+      />
     </div>
   );
 }
@@ -178,6 +234,84 @@ function HomeTab({
 // ============================================
 // Tab: Usage
 // ============================================
+
+function BalanceChart({ transactions }: { transactions: CreditsInfo['recent_transactions'] }) {
+  if (!transactions || transactions.length < 2) return null;
+
+  // Build data points: reverse to chronological, deduplicate by time
+  const points = [...transactions].reverse().map((tx) => ({
+    date: new Date(tx.created_at),
+    balance: tx.balance_after,
+  }));
+
+  const maxBalance = Math.max(...points.map((p) => p.balance), 1);
+  const W = 600;
+  const H = 160;
+  const padX = 0;
+  const padY = 16;
+
+  const xScale = (i: number) => padX + (i / (points.length - 1)) * (W - padX * 2);
+  const yScale = (v: number) => H - padY - ((v / maxBalance) * (H - padY * 2));
+
+  const linePath = points.map((p, i) =>
+    `${i === 0 ? 'M' : 'L'} ${xScale(i).toFixed(1)} ${yScale(p.balance).toFixed(1)}`
+  ).join(' ');
+
+  const areaPath = `${linePath} L ${xScale(points.length - 1).toFixed(1)} ${H} L ${xScale(0).toFixed(1)} ${H} Z`;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[160px]" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="balanceGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.15" />
+          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={areaPath} fill="url(#balanceGrad)" />
+      <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      {/* End dot */}
+      <circle cx={xScale(points.length - 1)} cy={yScale(points[points.length - 1].balance)} r="4" fill="#3b82f6" />
+      <circle cx={xScale(points.length - 1)} cy={yScale(points[points.length - 1].balance)} r="7" fill="#3b82f6" opacity="0.2" />
+    </svg>
+  );
+}
+
+function UsageDonut({ imageCount, textCount }: { imageCount: number; textCount: number }) {
+  const total = imageCount + textCount;
+  if (total === 0) return null;
+
+  const r = 40;
+  const cx = 50;
+  const cy = 50;
+  const circumference = 2 * Math.PI * r;
+  const imageRatio = imageCount / total;
+  const imageDash = circumference * imageRatio;
+  const textDash = circumference - imageDash;
+
+  return (
+    <svg viewBox="0 0 100 100" className="w-28 h-28">
+      {/* Text generation arc */}
+      <circle
+        cx={cx} cy={cy} r={r}
+        fill="none" stroke="#8b5cf6" strokeWidth="10"
+        strokeDasharray={`${textDash} ${circumference}`}
+        strokeDashoffset={-imageDash}
+        transform={`rotate(-90 ${cx} ${cy})`}
+        strokeLinecap="round"
+      />
+      {/* Image generation arc */}
+      <circle
+        cx={cx} cy={cy} r={r}
+        fill="none" stroke="#3b82f6" strokeWidth="10"
+        strokeDasharray={`${imageDash} ${circumference}`}
+        transform={`rotate(-90 ${cx} ${cy})`}
+        strokeLinecap="round"
+      />
+      <text x={cx} y={cy - 4} textAnchor="middle" className="text-[11px] font-semibold fill-gray-900">{total}</text>
+      <text x={cx} y={cy + 9} textAnchor="middle" className="text-[7px] fill-gray-400">total</text>
+    </svg>
+  );
+}
 
 function UsageTab() {
   const [creditsInfo, setCreditsInfo] = useState<CreditsInfo | null>(null);
@@ -190,130 +324,169 @@ function UsageTab() {
     setIsLoading(false);
   };
 
-  useEffect(() => {
-    loadCredits();
-  }, []);
+  useEffect(() => { loadCredits(); }, []);
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
       </div>
     );
   }
 
   if (!creditsInfo) {
-    return (
-      <div className="text-center py-16 text-gray-500">
-        クレジット情報を取得できませんでした
-      </div>
-    );
+    return <div className="text-center py-24 text-sm text-gray-500">クレジット情報を取得できませんでした</div>;
   }
 
+  // Compute usage breakdown
+  const txs = creditsInfo.recent_transactions || [];
+  const imageUsed = txs.filter((t) => t.transaction_type === 'deduct' && t.amount >= 10).length;
+  const textUsed = txs.filter((t) => t.transaction_type === 'deduct' && t.amount < 10).length;
+  const totalSpent = txs.filter((t) => t.transaction_type === 'deduct').reduce((s, t) => s + t.amount, 0);
+
   return (
-    <div className="max-w-2xl">
-      <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center gap-3">
-        <BarChart3 className="w-5 h-5 text-gray-400" />
-        API使用量
-      </h2>
-
-      <div className="space-y-6">
-        {/* Balance Card */}
-        <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-8 text-center border border-amber-200">
-          <p className="text-sm text-amber-700 mb-1">クレジット残高</p>
-          <p className="text-6xl font-bold text-amber-600">{creditsInfo.balance}</p>
-          <p className="text-sm text-amber-600 mt-2">クレジット</p>
-        </div>
-
-        {/* Cost Info */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-blue-50 rounded-xl p-5 text-center border border-blue-100">
-            <p className="text-3xl font-bold text-blue-600">{creditsInfo.costs.image_generation}</p>
-            <p className="text-sm text-blue-600 mt-1">画像生成 / 回</p>
-          </div>
-          <div className="bg-purple-50 rounded-xl p-5 text-center border border-purple-100">
-            <p className="text-3xl font-bold text-purple-600">{creditsInfo.costs.text_generation}</p>
-            <p className="text-sm text-purple-600 mt-1">テキスト生成 / 回</p>
-          </div>
-        </div>
-
-        {/* Usage Estimate */}
-        <div className="bg-gray-50 rounded-xl p-5 border border-gray-200">
-          <p className="text-sm font-medium text-gray-700 mb-3">残高で利用可能な回数</p>
-          <div className="grid grid-cols-2 gap-4 text-center">
-            <div>
-              <p className="text-2xl font-bold text-gray-900">
-                {Math.floor(creditsInfo.balance / creditsInfo.costs.image_generation)}
-              </p>
-              <p className="text-xs text-gray-500">画像生成</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">
-                {Math.floor(creditsInfo.balance / creditsInfo.costs.text_generation)}
-              </p>
-              <p className="text-xs text-gray-500">テキスト生成</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Transactions */}
-        {creditsInfo.recent_transactions && creditsInfo.recent_transactions.length > 0 && (
-          <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">最近の利用履歴</h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {creditsInfo.recent_transactions.map((tx, i) => (
-                <div key={i} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-100">
-                  <div
-                    className={cn(
-                      'w-8 h-8 rounded-full flex items-center justify-center',
-                      tx.transaction_type === 'deduct' ? 'bg-red-100' :
-                      tx.transaction_type === 'refund' ? 'bg-green-100' : 'bg-blue-100'
-                    )}
-                  >
-                    {tx.transaction_type === 'deduct' ? (
-                      <ArrowDown className="w-4 h-4 text-red-600" />
-                    ) : tx.transaction_type === 'refund' ? (
-                      <ArrowUp className="w-4 h-4 text-green-600" />
-                    ) : (
-                      <Gift className="w-4 h-4 text-blue-600" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {tx.description || tx.transaction_type}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(tx.created_at).toLocaleString('ja-JP')}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className={cn('text-sm font-semibold', tx.transaction_type === 'deduct' ? 'text-red-600' : 'text-green-600')}>
-                      {tx.transaction_type === 'deduct' ? '-' : '+'}{tx.amount}
-                    </p>
-                    <p className="text-xs text-gray-400">残高: {tx.balance_after}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Refresh */}
+    <div>
+      <div className="flex items-center justify-between mb-8">
+        <h2 className="text-lg font-semibold text-gray-900">Usage</h2>
         <button
           onClick={loadCredits}
-          className="flex items-center justify-center gap-2 w-full py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 rounded-md transition-colors"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className="w-3 h-3" />
           更新
         </button>
+      </div>
 
-        {/* Info */}
-        <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-          <p className="text-xs text-gray-500">
-            初回登録時に100クレジットが付与されます。API呼び出しが失敗した場合、クレジットは自動的に返金されます。
-          </p>
+      {/* Top row: Balance + Donut */}
+      <div className="grid grid-cols-3 gap-4 mb-4">
+        {/* Balance card */}
+        <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-1">Credit Balance</p>
+              <p className="text-4xl font-semibold text-gray-900 tracking-tight tabular-nums">{creditsInfo.balance}</p>
+            </div>
+            <div className="flex gap-4">
+              <div className="text-right">
+                <p className="text-xs text-gray-400 mb-0.5">画像生成</p>
+                <p className="text-lg font-semibold text-gray-900 tabular-nums">
+                  {Math.floor(creditsInfo.balance / creditsInfo.costs.image_generation)}
+                  <span className="text-xs font-normal text-gray-400 ml-0.5">回</span>
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-400 mb-0.5">テキスト</p>
+                <p className="text-lg font-semibold text-gray-900 tabular-nums">
+                  {Math.floor(creditsInfo.balance / creditsInfo.costs.text_generation)}
+                  <span className="text-xs font-normal text-gray-400 ml-0.5">回</span>
+                </p>
+              </div>
+            </div>
+          </div>
+          {/* Balance chart */}
+          <div className="border-t border-gray-100 pt-4 -mx-2">
+            <BalanceChart transactions={txs} />
+          </div>
+          {/* X-axis labels */}
+          {txs.length >= 2 && (
+            <div className="flex justify-between px-1 mt-1">
+              <span className="text-[10px] text-gray-300 tabular-nums">
+                {new Date(txs[txs.length - 1].created_at).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+              </span>
+              <span className="text-[10px] text-gray-300 tabular-nums">
+                {new Date(txs[0].created_at).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Usage breakdown donut */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col items-center justify-center">
+          <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-3">Breakdown</p>
+          <UsageDonut imageCount={imageUsed} textCount={textUsed} />
+          <div className="mt-3 space-y-1.5 w-full">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                <span className="text-xs text-gray-500">画像生成</span>
+              </div>
+              <span className="text-xs font-medium text-gray-900 tabular-nums">{imageUsed}回</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 bg-violet-500 rounded-full" />
+                <span className="text-xs text-gray-500">テキスト</span>
+              </div>
+              <span className="text-xs font-medium text-gray-900 tabular-nums">{textUsed}回</span>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <p className="text-xs text-gray-400 mb-1">合計使用量</p>
+          <p className="text-2xl font-semibold text-gray-900 tabular-nums">{totalSpent}<span className="text-sm font-normal text-gray-400 ml-1">cr</span></p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="flex items-center gap-1.5 mb-1">
+            <div className="w-2 h-2 bg-blue-500 rounded-full" />
+            <p className="text-xs text-gray-400">Image Generation</p>
+          </div>
+          <p className="text-2xl font-semibold text-gray-900 tabular-nums">{creditsInfo.costs.image_generation}<span className="text-sm font-normal text-gray-400 ml-1">cr/回</span></p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="flex items-center gap-1.5 mb-1">
+            <div className="w-2 h-2 bg-violet-500 rounded-full" />
+            <p className="text-xs text-gray-400">Text Generation</p>
+          </div>
+          <p className="text-2xl font-semibold text-gray-900 tabular-nums">{creditsInfo.costs.text_generation}<span className="text-sm font-normal text-gray-400 ml-1">cr/回</span></p>
+        </div>
+      </div>
+
+      {/* Activity */}
+      {txs.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-900">Activity</h3>
+            <span className="text-xs text-gray-400 tabular-nums">{txs.length}件</span>
+          </div>
+          <div className="divide-y divide-gray-50 max-h-[320px] overflow-y-auto">
+            {txs.map((tx, i) => (
+              <div key={i} className="flex items-center gap-3 px-5 py-3">
+                <div className={cn(
+                  'w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0',
+                  tx.transaction_type === 'deduct' ? 'bg-red-50' :
+                  tx.transaction_type === 'refund' ? 'bg-emerald-50' : 'bg-blue-50'
+                )}>
+                  {tx.transaction_type === 'deduct' ? (
+                    <TrendingDown className="w-3.5 h-3.5 text-red-500" />
+                  ) : tx.transaction_type === 'refund' ? (
+                    <ArrowUp className="w-3.5 h-3.5 text-emerald-500" />
+                  ) : (
+                    <Gift className="w-3.5 h-3.5 text-blue-500" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-900">{tx.description || tx.transaction_type}</p>
+                  <p className="text-xs text-gray-400">{new Date(tx.created_at).toLocaleString('ja-JP')}</p>
+                </div>
+                <div className="text-right">
+                  <p className={cn('text-sm font-medium tabular-nums', tx.transaction_type === 'deduct' ? 'text-red-500' : 'text-emerald-500')}>
+                    {tx.transaction_type === 'deduct' ? '-' : '+'}{tx.amount}
+                  </p>
+                  <p className="text-xs text-gray-400 tabular-nums">{tx.balance_after}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-gray-400 mt-4">
+        初回登録時に100クレジット付与。API失敗時は自動返金されます。
+      </p>
     </div>
   );
 }
@@ -339,20 +512,12 @@ function SettingsTab() {
   }, []);
 
   const handleSave = async () => {
-    if (!apiKey.trim()) {
-      setValidationStatus('invalid');
-      return;
-    }
+    if (!apiKey.trim()) { setValidationStatus('invalid'); return; }
     setIsValidating(true);
     setValidationStatus('idle');
     const isValid = await validateApiKey(apiKey.trim());
-    if (isValid) {
-      setGeminiApiKey(apiKey.trim());
-      setValidationStatus('valid');
-      setHasExistingKey(true);
-    } else {
-      setValidationStatus('invalid');
-    }
+    if (isValid) { setGeminiApiKey(apiKey.trim()); setValidationStatus('valid'); setHasExistingKey(true); }
+    else { setValidationStatus('invalid'); }
     setIsValidating(false);
   };
 
@@ -364,36 +529,25 @@ function SettingsTab() {
   };
 
   return (
-    <div className="max-w-2xl">
-      <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center gap-3">
-        <Settings className="w-5 h-5 text-gray-400" />
-        設定
-      </h2>
+    <div>
+      <h2 className="text-lg font-semibold text-gray-900 mb-8">Settings</h2>
 
-      <div className="space-y-6">
-        {/* API Key Section */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-              <Key className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-gray-900">Gemini API キー</h3>
-              <p className="text-sm text-gray-500">画像・テキスト生成に使用</p>
-            </div>
+      {/* API Key */}
+      <div className="bg-white border border-gray-200 rounded-xl mb-6">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-medium text-gray-900">API Keys</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Gemini APIキーの管理</p>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="flex items-start gap-3 p-3 bg-amber-50/50 border border-amber-100 rounded-lg">
+            <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700">
+              APIキーはブラウザにのみ保存されます。サーバーには送信されません。
+            </p>
           </div>
 
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-4">
-            <div className="flex gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-amber-800">
-                APIキーはお使いのブラウザにのみ保存され、サーバーには送信されません。API使用料は各自のGoogleアカウントに請求されます。
-              </p>
-            </div>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Gemini API Key</label>
             <div className="relative">
               <input
                 type={showKey ? 'text' : 'password'}
@@ -401,82 +555,85 @@ function SettingsTab() {
                 onChange={(e) => { setApiKeyState(e.target.value); setValidationStatus('idle'); }}
                 placeholder="AIza..."
                 className={cn(
-                  'w-full px-4 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 pr-20',
-                  validationStatus === 'valid' ? 'border-green-500 focus:ring-green-500' :
-                  validationStatus === 'invalid' ? 'border-red-500 focus:ring-red-500' :
-                  'border-gray-300 focus:ring-blue-500'
+                  'w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-1 pr-16 font-mono',
+                  validationStatus === 'valid' ? 'border-emerald-300 focus:ring-emerald-500' :
+                  validationStatus === 'invalid' ? 'border-red-300 focus:ring-red-500' :
+                  'border-gray-200 focus:ring-gray-400'
                 )}
               />
               <button
                 type="button"
                 onClick={() => setShowKey(!showKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
               >
-                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
             </div>
             {validationStatus === 'valid' && (
-              <p className="mt-2 text-sm text-green-600 flex items-center gap-1">
-                <Check className="w-4 h-4" /> APIキーが有効です
-              </p>
+              <p className="mt-1.5 text-xs text-emerald-600 flex items-center gap-1"><Check className="w-3 h-3" /> 有効</p>
             )}
             {validationStatus === 'invalid' && (
-              <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
-                <AlertCircle className="w-4 h-4" /> 無効なAPIキーです
-              </p>
+              <p className="mt-1.5 text-xs text-red-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> 無効なキーです</p>
             )}
           </div>
 
-          <a
-            href="https://aistudio.google.com/app/apikey"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 mb-4"
-          >
-            Google AI StudioでAPIキーを取得 <ExternalLink className="w-3 h-3" />
-          </a>
-
-          <div className="flex gap-3">
-            {hasExistingKey && (
-              <button
-                onClick={handleRemove}
-                className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              >
-                キーを削除
-              </button>
-            )}
-            <div className="flex-1" />
-            <button
-              onClick={handleSave}
-              disabled={isValidating || !apiKey.trim()}
-              className="px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors flex items-center gap-2"
+          <div className="flex items-center justify-between">
+            <a
+              href="https://aistudio.google.com/app/apikey"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
             >
-              {isValidating ? <><Loader2 className="w-4 h-4 animate-spin" /> 検証中...</> : '保存'}
-            </button>
+              Google AI Studio <ExternalLink className="w-3 h-3" />
+            </a>
+            <div className="flex gap-2">
+              {hasExistingKey && (
+                <button onClick={handleRemove} className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                  削除
+                </button>
+              )}
+              <button
+                onClick={handleSave}
+                disabled={isValidating || !apiKey.trim()}
+                className="px-4 py-1.5 text-xs font-medium text-white bg-[#0d0d0d] hover:bg-[#1a1a1a] disabled:opacity-40 rounded-lg transition-colors flex items-center gap-1.5"
+              >
+                {isValidating ? <><Loader2 className="w-3 h-3 animate-spin" /> 検証中</> : '保存'}
+              </button>
+            </div>
           </div>
         </div>
+      </div>
 
-        {/* Model Info */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h3 className="text-base font-semibold text-gray-900 mb-3">使用モデル・料金目安</h3>
-          <div className="text-sm text-gray-600 space-y-2">
-            <div className="flex items-start gap-2">
-              <span className="text-blue-500 mt-0.5">●</span>
+      {/* Models */}
+      <div className="bg-white border border-gray-200 rounded-xl">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-medium text-gray-900">Models</h3>
+          <p className="text-xs text-gray-400 mt-0.5">使用中のAIモデルと料金</p>
+        </div>
+        <div className="divide-y divide-gray-50">
+          <div className="px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+                <Zap className="w-4 h-4 text-blue-600" />
+              </div>
               <div>
-                <p className="font-medium">画像生成: Gemini 3.0 Pro</p>
-                <p className="text-xs text-gray-400">約$0.134/枚 - 高品質な画像編集</p>
+                <p className="text-sm font-medium text-gray-900">Gemini 3.0 Pro</p>
+                <p className="text-xs text-gray-400">画像生成・インペイント</p>
               </div>
             </div>
-            <div className="flex items-start gap-2">
-              <span className="text-purple-500 mt-0.5">●</span>
+            <span className="text-xs text-gray-400 font-mono tabular-nums">~$0.134/枚</span>
+          </div>
+          <div className="px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-violet-50 rounded-lg flex items-center justify-center">
+                <Zap className="w-4 h-4 text-violet-600" />
+              </div>
               <div>
-                <p className="font-medium">テキスト候補生成: Gemini 2.0 Flash</p>
-                <p className="text-xs text-gray-400">約$0.075/100万トークン - 高速・低コスト</p>
+                <p className="text-sm font-medium text-gray-900">Gemini 2.0 Flash</p>
+                <p className="text-xs text-gray-400">OCR・テキスト候補生成</p>
               </div>
             </div>
-            <p className="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">
-              ※ 料金は変更される可能性があります。最新情報はGoogleの公式ドキュメントをご確認ください。
-            </p>
+            <span className="text-xs text-gray-400 font-mono tabular-nums">~$0.075/1M tok</span>
           </div>
         </div>
       </div>
@@ -489,80 +646,236 @@ function SettingsTab() {
 // ============================================
 
 function TermsTab() {
+  const sections: { title: string; content?: string; items?: string[]; subsections?: { title: string; content?: string; items?: string[] }[] }[] = [
+    {
+      title: '第1条（サービス概要）',
+      content: 'オタスケPDF（以下「本サービス」）は、PDF・PPTXファイルのスライドに含まれるテキストや画像の修正を支援するAIツールです。本サービスはGoogle Gemini APIを活用し、画像のインペイント修正、テキストのOCR（光学文字認識）および候補生成を行います。本サービスの利用にあたり、ユーザーは本規約のすべてに同意したものとみなします。',
+    },
+    {
+      title: '第2条（定義）',
+      items: [
+        '「ユーザー」とは、本サービスにアカウント登録を行い、本サービスを利用するすべての個人または法人を指します。',
+        '「クレジット」とは、本サービス内のAPI機能を利用するために消費される内部通貨単位を指します。',
+        '「コンテンツ」とは、ユーザーが本サービスにアップロードまたは生成したファイル、画像、テキストその他一切のデータを指します。',
+        '「AI生成物」とは、本サービスのAI機能により生成された画像、テキストその他の成果物を指します。',
+      ],
+    },
+    {
+      title: '第3条（アカウント登録・管理）',
+      items: [
+        'ユーザーは正確かつ最新の情報を提供してアカウント登録を行うものとします。',
+        'アカウントの認証情報（パスワード等）の管理はユーザーの責任とし、第三者への譲渡・貸与はできません。',
+        'アカウントの不正利用により生じた損害について、運営者は一切の責任を負いません。',
+        '1人のユーザーが複数のアカウントを作成し、初回クレジットを不正に取得する行為は禁止します。',
+      ],
+    },
+    {
+      title: '第4条（クレジットシステム）',
+      subsections: [
+        {
+          title: '4-1. クレジットの付与',
+          items: [
+            '新規アカウント登録時に100クレジットが無償で付与されます。',
+            '運営者は、キャンペーン等により追加クレジットを付与する場合があります。',
+            'クレジットの付与条件・数量は、運営者の裁量により予告なく変更されることがあります。',
+          ],
+        },
+        {
+          title: '4-2. クレジットの消費',
+          items: [
+            '画像生成（AI修正・インペイント）: 10クレジット / 回',
+            'テキスト生成（OCR・候補生成）: 1クレジット / 回',
+            '一括編集: 対象ページ数 × 10クレジット / 回',
+            'クレジットは各API呼び出しの実行前に即時差し引かれます。',
+          ],
+        },
+        {
+          title: '4-3. 返金ポリシー',
+          items: [
+            'API呼び出しがサーバー側の障害により失敗した場合、消費されたクレジットは自動的に返金されます。',
+            '同一リクエストID（request_id）による重複課金は発生しません。重複検知された場合、2回目以降の課金は自動的にブロックされます。',
+            'ユーザーの操作ミス（誤ったプロンプト入力等）によるクレジット消費は返金の対象外です。',
+            'AI生成結果の品質に対する不満を理由とする返金は行いません。',
+          ],
+        },
+        {
+          title: '4-4. クレジットの譲渡・換金',
+          items: [
+            'クレジットの第三者への譲渡・売買・交換はできません。',
+            'クレジットの現金・その他の通貨への換金はできません。',
+            'アカウント削除時に残存するクレジットは失効し、返金されません。',
+          ],
+        },
+      ],
+    },
+    {
+      title: '第5条（API利用・外部サービスとの連携）',
+      items: [
+        '本サービスはサーバー側でGoogle Gemini APIを使用しています。Google Gemini APIの利用にはGoogleの利用規約が別途適用されます。',
+        'ユーザーが自身のAPIキーを設定した場合、当該キーはブラウザのローカルストレージにのみ保存され、運営者のサーバーには一切送信されません。',
+        'ユーザー自身のAPIキー使用時の料金はユーザーが直接Googleに支払うものとし、運営者は一切関与しません。',
+        '外部APIの仕様変更・障害・サービス終了等により本サービスの機能が制限または停止した場合、運営者は責任を負いません。',
+      ],
+    },
+    {
+      title: '第6条（データの取り扱い・プライバシー）',
+      subsections: [
+        {
+          title: '6-1. データの保存',
+          items: [
+            'アップロードされたファイル（PDF・PPTX）および変換後の画像データは、ユーザーのブラウザのIndexedDBにローカル保存されます。',
+            'ログイン状態のユーザーのプロジェクトメタデータ（ファイル名、ページ情報、修正履歴等）は、Supabaseクラウドに同期されます。',
+            '画像データのクラウド保存時には暗号化が施されます。',
+          ],
+        },
+        {
+          title: '6-2. データのアクセス制御',
+          items: [
+            'ユーザーデータには行レベルセキュリティ（RLS）が適用され、本人以外のユーザーからはアクセスできません。',
+            '運営者は、法令に基づく開示請求またはサービス運営上必要な場合を除き、ユーザーデータにアクセスしません。',
+          ],
+        },
+        {
+          title: '6-3. データの削除',
+          items: [
+            'プロジェクト削除時には、ローカル（IndexedDB）およびクラウド（Supabase Storage・Database）の両方からデータが完全に削除されます。',
+            'アカウント削除を希望する場合は運営者にご連絡ください。アカウントに紐づくすべてのデータが削除されます。',
+            '削除されたデータの復元はできません。',
+          ],
+        },
+        {
+          title: '6-4. AI処理におけるデータ利用',
+          items: [
+            'AI修正・OCR処理のため、ユーザーがアップロードした画像はGoogle Gemini APIに送信されます。',
+            '送信されたデータのGoogle側での取り扱いは、Googleのプライバシーポリシーおよび利用規約に準じます。',
+            '運営者は、ユーザーのコンテンツをAIモデルの学習データとして使用しません。',
+          ],
+        },
+      ],
+    },
+    {
+      title: '第7条（知的財産権）',
+      items: [
+        'ユーザーがアップロードしたコンテンツの著作権はユーザーに帰属します。',
+        'AI生成物の著作権については、適用される法令に従います。現行法上、AI生成物に著作権が認められない場合があることをユーザーは了承します。',
+        '本サービスのUI・ソースコード・ロゴ等の著作権は運営者に帰属します。',
+        'ユーザーは、第三者の著作権・商標権その他の知的財産権を侵害するコンテンツをアップロードしてはなりません。',
+      ],
+    },
+    {
+      title: '第8条（禁止事項）',
+      content: 'ユーザーは以下の行為を行ってはなりません。',
+      items: [
+        '複数アカウントの作成によるクレジットの不正取得',
+        '自動化ツール（Bot・スクリプト等）による大量リクエストの送信',
+        '本サービスのリバースエンジニアリング、逆コンパイルまたは逆アセンブル',
+        'APIエンドポイントへの不正アクセスまたは脆弱性の悪用',
+        '違法・公序良俗に反するコンテンツの処理（児童ポルノ、ヘイトスピーチ、詐欺目的の文書偽造等）',
+        '第三者の権利（著作権・肖像権・プライバシー権等）を侵害するコンテンツの処理',
+        '本サービスを利用した営利目的の無断再配布・転売',
+        'その他、運営者が不適切と判断する行為',
+      ],
+    },
+    {
+      title: '第9条（サービスの中断・変更・終了）',
+      items: [
+        '運営者は、以下の場合に本サービスの全部または一部を事前の通知なく中断することがあります: システム保守、天災・障害等の不可抗力、セキュリティ上の緊急対応。',
+        '運営者は、本サービスの機能・仕様・料金体系を予告なく変更する権利を有します。',
+        '運営者は、運営上の判断により本サービスを終了する権利を有します。サービス終了時は、可能な限り事前に通知を行い、ユーザーがデータをエクスポートするための合理的な猶予期間を設けます。',
+      ],
+    },
+    {
+      title: '第10条（免責事項・保証の否認）',
+      items: [
+        '本サービスは「現状のまま（AS IS）」で提供され、明示・黙示を問わず、商品性、特定目的への適合性、正確性、完全性、信頼性について一切の保証をしません。',
+        'AI生成結果の正確性・品質・適合性は保証されません。重要な文書への適用時には必ず人間による確認を行ってください。',
+        '本サービスの利用または利用不能により生じた直接的・間接的・偶発的・特別・懲罰的損害について、運営者は一切の責任を負いません。',
+        '外部サービス（Google Gemini API、Supabase等）の障害に起因する本サービスの不具合について、運営者は責任を負いません。',
+        'ユーザー間またはユーザーと第三者間の紛争について、運営者は一切関与せず責任を負いません。',
+      ],
+    },
+    {
+      title: '第11条（アカウントの停止・削除）',
+      items: [
+        '運営者は、ユーザーが本規約に違反した場合、または違反のおそれがあると判断した場合、事前通知なくアカウントの利用を停止または削除できます。',
+        '停止・削除時に残存するクレジットは失効し、返金されません。',
+        '運営者の判断に対する異議申し立ては受け付けますが、最終的な判断は運営者に帰属します。',
+      ],
+    },
+    {
+      title: '第12条（損害賠償の制限）',
+      content: '運営者がユーザーに対して損害賠償責任を負う場合であっても、その賠償額は当該ユーザーが過去12か月間に本サービスに対して支払った総額を上限とします。無償利用のユーザーに対する賠償額の上限は0円とします。',
+    },
+    {
+      title: '第13条（規約の変更）',
+      items: [
+        '運営者は、本規約を随時変更できるものとします。',
+        '重要な変更を行う場合は、本サービス上での告知またはメール等により通知します。',
+        '変更後に本サービスを継続利用した場合、変更後の規約に同意したものとみなします。',
+      ],
+    },
+    {
+      title: '第14条（準拠法・管轄裁判所）',
+      items: [
+        '本規約は日本法に準拠し、日本法に従って解釈されます。',
+        '本サービスに関する一切の紛争は、東京地方裁判所を第一審の専属的合意管轄裁判所とします。',
+      ],
+    },
+    {
+      title: '第15条（連絡先）',
+      content: '本規約に関するお問い合わせは、本サービス内のお問い合わせフォームまたは運営者が指定する連絡先までご連絡ください。',
+    },
+  ];
+
   return (
-    <div className="max-w-2xl">
-      <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center gap-3">
-        <FileCheck className="w-5 h-5 text-gray-400" />
-        利用規約
-      </h2>
+    <div>
+      <h2 className="text-lg font-semibold text-gray-900 mb-2">利用規約</h2>
+      <p className="text-xs text-gray-400 mb-6">本サービスをご利用いただく前に、以下の利用規約を必ずお読みください。</p>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-6">
-        {/* Service Overview */}
-        <section>
-          <h3 className="text-base font-semibold text-gray-900 mb-2">サービス概要</h3>
-          <p className="text-sm text-gray-600 leading-relaxed">
-            オタスケPDFは、PDF・PPTXファイルのスライドに含まれるテキストや画像の修正を支援するAIツールです。
-            Google Gemini APIを活用し、画像のインペイント修正やテキストのOCR・候補生成を行います。
-          </p>
-        </section>
-
-        {/* Credit System */}
-        <section>
-          <h3 className="text-base font-semibold text-gray-900 mb-2">クレジットシステム</h3>
-          <div className="text-sm text-gray-600 leading-relaxed space-y-2">
-            <p>本サービスではクレジット制を採用しています。</p>
-            <ul className="list-disc list-inside space-y-1 ml-2">
-              <li>新規登録時に <strong>100クレジット</strong> が付与されます</li>
-              <li>画像生成（AI修正）: <strong>10クレジット / 回</strong></li>
-              <li>テキスト生成（OCR・候補生成）: <strong>1クレジット / 回</strong></li>
-              <li>API呼び出しが失敗した場合、消費されたクレジットは <strong>自動的に返金</strong> されます</li>
-              <li>同一リクエストの重複課金は発生しません（冪等性保証）</li>
-            </ul>
+      <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
+        {sections.map((section, i) => (
+          <div key={i} className="px-6 py-5">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">{section.title}</h3>
+            {section.content && (
+              <p className="text-sm text-gray-500 leading-relaxed">{section.content}</p>
+            )}
+            {section.items && (
+              <ul className="space-y-1.5 mt-1">
+                {section.items.map((item, j) => (
+                  <li key={j} className="text-sm text-gray-500 flex items-start gap-2">
+                    <span className="text-gray-300 mt-1.5 flex-shrink-0">•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {section.subsections && (
+              <div className="mt-3 space-y-4">
+                {section.subsections.map((sub, k) => (
+                  <div key={k} className="pl-3 border-l-2 border-gray-100">
+                    <h4 className="text-xs font-semibold text-gray-700 mb-1.5">{sub.title}</h4>
+                    {sub.content && (
+                      <p className="text-sm text-gray-500 leading-relaxed">{sub.content}</p>
+                    )}
+                    {sub.items && (
+                      <ul className="space-y-1">
+                        {sub.items.map((item, l) => (
+                          <li key={l} className="text-sm text-gray-500 flex items-start gap-2">
+                            <span className="text-gray-300 mt-1.5 flex-shrink-0">-</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </section>
-
-        {/* API Usage */}
-        <section>
-          <h3 className="text-base font-semibold text-gray-900 mb-2">API利用について</h3>
-          <p className="text-sm text-gray-600 leading-relaxed">
-            本サービスはサーバー側でGoogle Gemini APIを使用しています。
-            ユーザーが自身のAPIキーを設定した場合、そのキーはブラウザのローカルストレージにのみ保存され、
-            サーバーには送信されません。APIの利用料金はユーザー自身のGoogleアカウントに請求されます。
-          </p>
-        </section>
-
-        {/* Data Handling */}
-        <section>
-          <h3 className="text-base font-semibold text-gray-900 mb-2">データの取り扱い</h3>
-          <div className="text-sm text-gray-600 leading-relaxed space-y-2">
-            <ul className="list-disc list-inside space-y-1 ml-2">
-              <li>アップロードされたファイルはブラウザのIndexedDBに保存されます</li>
-              <li>ログイン時はSupabaseクラウドにプロジェクトデータが同期されます</li>
-              <li>画像データはSupabase Storageに暗号化して保存されます</li>
-              <li>ユーザーデータは他のユーザーからアクセスできません（RLS適用済み）</li>
-              <li>プロジェクトを削除すると、ローカルおよびクラウドの両方からデータが完全に削除されます</li>
-            </ul>
-          </div>
-        </section>
-
-        {/* Disclaimer */}
-        <section>
-          <h3 className="text-base font-semibold text-gray-900 mb-2">免責事項</h3>
-          <div className="text-sm text-gray-600 leading-relaxed space-y-2">
-            <ul className="list-disc list-inside space-y-1 ml-2">
-              <li>AI生成結果の正確性は保証されません。必ず人間の目で最終確認をしてください</li>
-              <li>本サービスの利用により生じた損害について、運営者は責任を負いません</li>
-              <li>サービスの仕様・料金は予告なく変更される場合があります</li>
-              <li>不正利用が確認された場合、アカウントを停止する場合があります</li>
-            </ul>
-          </div>
-        </section>
-
-        {/* Footer */}
-        <div className="pt-4 border-t border-gray-100">
-          <p className="text-xs text-gray-400 text-center">最終更新: 2026年2月</p>
-        </div>
+        ))}
       </div>
+
+      <p className="text-xs text-gray-400 mt-4 text-right">制定日: 2026年2月12日 ｜ 最終更新: 2026年2月12日</p>
     </div>
   );
 }
@@ -575,9 +888,9 @@ type TabId = 'home' | 'usage' | 'settings' | 'terms';
 
 const tabs: { id: TabId; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
-  { id: 'usage', label: 'API使用量', icon: BarChart3 },
-  { id: 'settings', label: '設定', icon: Settings },
-  { id: 'terms', label: '利用規約', icon: FileCheck },
+  { id: 'usage', label: 'Usage', icon: BarChart3 },
+  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'terms', label: 'Terms', icon: FileCheck },
 ];
 
 export default function HomePage() {
@@ -591,73 +904,62 @@ export default function HomePage() {
 
   useSync(user?.id);
 
-  useEffect(() => {
-    setIsLoadingProjects(false);
-  }, []);
+  useEffect(() => { setIsLoadingProjects(false); }, []);
 
-  // Load credit balance for sidebar badge
   useEffect(() => {
     if (!user) return;
-    getCreditsInfo().then((info) => {
-      if (info) setCreditBalance(info.balance);
-    });
+    getCreditsInfo().then((info) => { if (info) setCreditBalance(info.balance); });
   }, [user]);
 
-  const handleUploadComplete = (projectId: string) => {
-    router.push(`/projects/${projectId}`);
-  };
+  const handleUploadComplete = (projectId: string) => router.push(`/projects/${projectId}`);
 
   const handleDeleteProject = (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('このプロジェクトを削除しますか？')) {
-      deleteProject(projectId);
-    }
+    if (confirm('このプロジェクトを削除しますか？')) deleteProject(projectId);
   };
-
-  const handleAuthSuccess = () => {};
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <Loader2 className="w-5 h-5 text-gray-300 animate-spin" />
       </div>
     );
   }
 
   if (!user) {
-    return <AuthForm onSuccess={handleAuthSuccess} />;
+    return <AuthForm onSuccess={() => {}} />;
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-[#fafafa] flex">
       {/* Sidebar */}
-      <aside className="w-56 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+      <aside className="w-[220px] bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
         {/* Logo */}
-        <div className="p-4 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-gray-900 rounded-xl flex items-center justify-center">
-              <span className="text-base font-bold text-white">助</span>
+        <div className="px-4 py-5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-[#0d0d0d] rounded-lg flex items-center justify-center">
+              <span className="text-sm font-bold text-white">助</span>
             </div>
-            <span className="text-sm font-semibold text-gray-900">オタスケPDF</span>
+            <span className="text-sm font-medium text-gray-900 tracking-tight">オタスケPDF</span>
           </div>
         </div>
 
         {/* Credit Badge */}
-        <div className="px-3 py-3">
+        <div className="px-3 mb-2">
           <button
             onClick={() => setActiveTab('usage')}
-            className="w-full flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg hover:from-amber-100 hover:to-orange-100 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors"
           >
-            <Coins className="w-4 h-4 text-amber-600" />
-            <span className="text-xs text-amber-700">クレジット</span>
-            <span className="ml-auto text-sm font-bold text-amber-600">
-              {creditBalance !== null ? creditBalance : '...'}
+            <Coins className="w-3.5 h-3.5 text-emerald-500" />
+            <span className="text-xs text-gray-500">Credits</span>
+            <span className="ml-auto text-sm font-semibold text-gray-900 tabular-nums">
+              {creditBalance !== null ? creditBalance : '—'}
             </span>
           </button>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-2 space-y-1">
+        <nav className="flex-1 px-3 py-2 space-y-0.5">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -666,10 +968,10 @@ export default function HomePage() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                  'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-colors',
                   isActive
-                    ? 'bg-gray-900 text-white'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    ? 'bg-gray-100 text-gray-900 font-medium'
+                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
                 )}
               >
                 <Icon className="w-4 h-4" />
@@ -679,24 +981,24 @@ export default function HomePage() {
           })}
         </nav>
 
-        {/* User Info */}
-        <div className="p-3 border-t border-gray-100">
-          <div className="px-3 py-2">
-            <p className="text-xs text-gray-500 truncate">{user.email}</p>
+        {/* User */}
+        <div className="p-3 border-t border-gray-200">
+          <div className="px-3 py-1.5">
+            <p className="text-[11px] text-gray-400 truncate">{user.email}</p>
           </div>
           <button
             onClick={() => signOut()}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
           >
-            <LogOut className="w-4 h-4" />
-            ログアウト
+            <LogOut className="w-3.5 h-3.5" />
+            Log out
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
-        <div className="px-8 py-10">
+        <div className="max-w-5xl mx-auto px-8 py-8">
           {activeTab === 'home' && (
             <HomeTab
               projects={projects}
