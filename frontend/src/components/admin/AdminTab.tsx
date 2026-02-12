@@ -346,18 +346,18 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
         </div>
       )}
 
-      {/* ===== Action Cards ===== */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {/* ===== Actions ===== */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {/* Credit adjustment */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+        <div className="px-4 py-3 border-b border-gray-100">
           <h4 className="text-xs font-medium text-gray-500">クレジット操作</h4>
-          <div className="space-y-2">
+          <div className="mt-2 flex items-center gap-2">
             <input
               type="number"
               placeholder="数量"
               value={adjustAmount}
               onChange={(e) => setAdjustAmount(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300"
+              className="w-24 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300 tabular-nums"
               min="1"
             />
             <input
@@ -365,21 +365,19 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
               placeholder="理由（任意）"
               value={adjustDesc}
               onChange={(e) => setAdjustDesc(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300"
+              className="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300"
             />
-          </div>
-          <div className="flex gap-2">
             <button
               onClick={() => handleAdjust(true)}
               disabled={actionLoading || !adjustAmount}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium bg-[#0d0d0d] text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium bg-[#0d0d0d] text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" /> 付与
             </button>
             <button
               onClick={() => handleAdjust(false)}
               disabled={actionLoading || !adjustAmount}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
             >
               <Minus className="w-3.5 h-3.5" /> 減算
             </button>
@@ -387,59 +385,58 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
         </div>
 
         {/* Account management */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-          <h4 className="text-xs font-medium text-gray-500">アカウント管理</h4>
-          <div className="space-y-2">
-            {isBanned ? (
+        <div className="px-4 py-3 flex items-center gap-2">
+          <span className="text-xs font-medium text-gray-500 mr-auto">アカウント管理</span>
+          {showPasswordForm ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="新しいパスワード（6文字以上）"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-56 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300 font-mono"
+              />
               <button
-                onClick={() => handleBan(false)}
-                disabled={actionLoading}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium bg-[#0d0d0d] text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors"
+                onClick={handleResetPassword}
+                disabled={actionLoading || !newPassword}
+                className="px-3 py-1.5 text-sm font-medium bg-[#0d0d0d] text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors"
               >
-                <ShieldCheck className="w-3.5 h-3.5" /> BAN解除
+                設定
               </button>
-            ) : (
               <button
-                onClick={() => handleBan(true)}
-                disabled={actionLoading}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40 transition-colors"
+                onClick={() => { setShowPasswordForm(false); setNewPassword(''); }}
+                className="p-1 text-gray-400 hover:text-gray-600"
               >
-                <Ban className="w-3.5 h-3.5" /> ユーザーをBAN
+                <X className="w-4 h-4" />
               </button>
-            )}
-
-            {showPasswordForm ? (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="新しいパスワード（6文字以上）"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300 font-mono"
-                />
+            </div>
+          ) : (
+            <>
+              {isBanned ? (
                 <button
-                  onClick={handleResetPassword}
-                  disabled={actionLoading || !newPassword}
-                  className="px-3 py-2 text-sm font-medium bg-[#0d0d0d] text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors"
+                  onClick={() => handleBan(false)}
+                  disabled={actionLoading}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium bg-[#0d0d0d] text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors"
                 >
-                  設定
+                  <ShieldCheck className="w-3.5 h-3.5" /> BAN解除
                 </button>
+              ) : (
                 <button
-                  onClick={() => { setShowPasswordForm(false); setNewPassword(''); }}
-                  className="px-2 py-2 text-gray-400 hover:text-gray-600"
+                  onClick={() => handleBan(true)}
+                  disabled={actionLoading}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40 transition-colors"
                 >
-                  <X className="w-4 h-4" />
+                  <Ban className="w-3.5 h-3.5" /> BAN
                 </button>
-              </div>
-            ) : (
+              )}
               <button
                 onClick={() => setShowPasswordForm(true)}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 <Key className="w-3.5 h-3.5" /> パスワード変更
               </button>
-            )}
-          </div>
+            </>
+          )}
         </div>
       </div>
 
