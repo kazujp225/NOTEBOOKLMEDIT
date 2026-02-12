@@ -455,9 +455,9 @@ export async function GET(request: NextRequest) {
     });
 
     if (error) {
-      console.error('Get credits error:', error);
+      console.error('Get credits error:', JSON.stringify(error));
       return NextResponse.json(
-        { error: 'クレジット情報の取得に失敗しました' },
+        { error: 'クレジット情報の取得に失敗しました', detail: error.message || String(error) },
         { status: 500 }
       );
     }
@@ -468,9 +468,9 @@ export async function GET(request: NextRequest) {
       recent_transactions: data.recent_transactions || [],
     });
   } catch (error) {
-    console.error('Credits API error:', error);
+    console.error('Credits API error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', detail: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
