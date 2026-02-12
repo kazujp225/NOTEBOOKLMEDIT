@@ -15,6 +15,7 @@ import {
   getCreditsInfo,
   type CreditsInfo,
 } from '@/lib/gemini';
+import { updateUserEmail, updateUserPassword } from '@/lib/supabase';
 import { checkAdminStatus } from '@/lib/admin';
 import { AdminTab } from '@/components/admin/AdminTab';
 import {
@@ -34,6 +35,9 @@ import {
   Check,
   Zap,
   TrendingDown,
+  Mail,
+  Lock,
+  AlertCircle,
   Plus,
   X,
   Shield,
@@ -487,15 +491,154 @@ function UsageTab() {
 // ============================================
 
 function SettingsTab() {
+  const { user } = useAuth();
+  const [newEmail, setNewEmail] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const showSettingsMessage = (type: 'success' | 'error', text: string) => {
+    setSettingsMessage({ type, text });
+    setTimeout(() => setSettingsMessage(null), 5000);
+  };
+
+  const handleEmailChange = async () => {
+    if (!newEmail.trim()) return;
+    setIsUpdating(true);
+    try {
+      const { error } = await updateUserEmail(newEmail.trim());
+      if (error) {
+        showSettingsMessage('error', error.message);
+      } else {
+        showSettingsMessage('success', '確認メールを送信しました。新しいメールアドレスに届いたリンクをクリックして変更を完了してください。');
+        setNewEmail('');
+      }
+    } catch {
+      showSettingsMessage('error', 'エラーが発生しました');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    if (!newPassword || !confirmNewPassword) return;
+    if (newPassword !== confirmNewPassword) {
+      showSettingsMessage('error', 'パスワードが一致しません');
+      return;
+    }
+    if (newPassword.length < 6) {
+      showSettingsMessage('error', 'パスワードは6文字以上必要です');
+      return;
+    }
+    setIsUpdating(true);
+    try {
+      const { error } = await updateUserPassword(newPassword);
+      if (error) {
+        showSettingsMessage('error', error.message);
+      } else {
+        showSettingsMessage('success', 'パスワードを変更しました');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmNewPassword('');
+      }
+    } catch {
+      showSettingsMessage('error', 'エラーが発生しました');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   return (
     <div>
       <h2 className="text-lg font-semibold text-gray-900 mb-8">Settings</h2>
+
+      {/* Message */}
+      {settingsMessage && (
+        <div className={cn(
+          'mb-6 flex items-start gap-2 px-4 py-3 rounded-lg text-sm',
+          settingsMessage.type === 'success' ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : 'bg-red-50 border border-red-200 text-red-700'
+        )}>
+          {settingsMessage.type === 'success' ? <Check className="w-4 h-4 flex-shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
+          {settingsMessage.text}
+        </div>
+      )}
+
+      {/* Email Change */}
+      <div className="bg-white border border-gray-200 rounded-xl mb-6">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-medium text-gray-900">メールアドレス</h3>
+          <p className="text-xs text-gray-400 mt-0.5">現在: {user?.email}</p>
+        </div>
+        <div className="p-6">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
+              <input
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="新しいメールアドレス"
+                className="w-full pl-10 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300"
+              />
+            </div>
+            <button
+              onClick={handleEmailChange}
+              disabled={isUpdating || !newEmail.trim()}
+              className="px-4 py-2 text-sm font-medium text-white bg-[#0d0d0d] hover:bg-[#1a1a1a] disabled:opacity-40 rounded-lg transition-colors flex items-center gap-1.5"
+            >
+              {isUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              変更
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">変更後、新しいメールアドレスに確認メールが届きます</p>
+        </div>
+      </div>
+
+      {/* Password Change */}
+      <div className="bg-white border border-gray-200 rounded-xl mb-6">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-medium text-gray-900">パスワード変更</h3>
+        </div>
+        <div className="p-6 space-y-3">
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="新しいパスワード（6文字以上）"
+              className="w-full pl-10 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300"
+              autoComplete="new-password"
+            />
+          </div>
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
+            <input
+              type="password"
+              value={confirmNewPassword}
+              onChange={(e) => setConfirmNewPassword(e.target.value)}
+              placeholder="新しいパスワード（確認）"
+              className="w-full pl-10 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300"
+              autoComplete="new-password"
+            />
+          </div>
+          <button
+            onClick={handlePasswordChange}
+            disabled={isUpdating || !newPassword || !confirmNewPassword}
+            className="px-4 py-2 text-sm font-medium text-white bg-[#0d0d0d] hover:bg-[#1a1a1a] disabled:opacity-40 rounded-lg transition-colors flex items-center gap-1.5"
+          >
+            {isUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+            パスワードを変更
+          </button>
+        </div>
+      </div>
 
       {/* API Configuration */}
       <div className="bg-white border border-gray-200 rounded-xl mb-6">
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-sm font-medium text-gray-900">API設定</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Gemini APIの接続状況</p>
         </div>
         <div className="p-6">
           <div className="flex items-start gap-3 p-3 bg-emerald-50/50 border border-emerald-100 rounded-lg">
@@ -527,7 +670,7 @@ function SettingsTab() {
                 <p className="text-xs text-gray-400">画像生成・インペイント</p>
               </div>
             </div>
-            <span className="text-xs text-gray-400 font-mono tabular-nums">~$0.134/枚</span>
+            <span className="text-xs text-gray-400 font-mono tabular-nums">13cr / 回</span>
           </div>
           <div className="px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -539,7 +682,7 @@ function SettingsTab() {
                 <p className="text-xs text-gray-400">OCR・テキスト候補生成</p>
               </div>
             </div>
-            <span className="text-xs text-gray-400 font-mono tabular-nums">~$0.075/1M tok</span>
+            <span className="text-xs text-gray-400 font-mono tabular-nums">1cr / 回</span>
           </div>
         </div>
       </div>
