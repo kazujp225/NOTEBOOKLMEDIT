@@ -127,6 +127,14 @@ export function AuthForm({ onSuccess }: AuthFormProps) {
           {message && (
             <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
               <p className="text-sm text-emerald-600">{message}</p>
+              {mode === 'signup' && (
+                <button
+                  onClick={() => { setMode('login'); setMessage(null); }}
+                  className="mt-2 text-xs font-medium text-emerald-700 underline hover:no-underline"
+                >
+                  ログインへ戻る
+                </button>
+              )}
             </div>
           )}
 

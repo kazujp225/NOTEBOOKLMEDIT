@@ -52,6 +52,22 @@ export function onAuthStateChange(callback: (event: string, session: unknown) =>
 }
 
 /**
+ * Update user email (sends confirmation to new email)
+ */
+export async function updateUserEmail(newEmail: string) {
+  const { data, error } = await supabase.auth.updateUser({ email: newEmail });
+  return { data, error };
+}
+
+/**
+ * Update user password
+ */
+export async function updateUserPassword(newPassword: string) {
+  const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+  return { data, error };
+}
+
+/**
  * Get current user ID (non-React context)
  */
 export async function getCurrentUserId(): Promise<string | null> {
