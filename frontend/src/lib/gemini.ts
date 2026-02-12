@@ -52,7 +52,6 @@ export interface InpaintResponse {
   imageBase64?: string;
   error?: string;
   balance?: number;
-  refunded?: boolean;
 }
 
 export interface CreditsInfo {

@@ -2,8 +2,8 @@
  * Gemini API Proxy Route
  * - Keeps API key secure on server side
  * - Uses credit/ticket system with atomic deduction
- * - Handles refunds on failure
  * - Prevents duplicate requests via request_id
+ * - API処理実行単位課金（成功・失敗問わず課金）
  * - Supports reference design for style matching (like wordpressdemo)
  */
 
@@ -134,32 +134,13 @@ async function deductCredits(
   return { success: true, balance: data.balance_after };
 }
 
-// Refund credits
-async function refundCredits(
-  userId: string,
-  requestId: string,
-  amount: number,
-  description: string
-): Promise<void> {
-  const { error } = await getSupabase().rpc('refund_credits', {
-    p_user_id: userId,
-    p_request_id: requestId,
-    p_amount: amount,
-    p_description: description,
-  });
-
-  if (error) {
-    console.error('Refund credits error:', error);
-  }
-}
-
 // Record generation request
 async function recordRequest(
   requestId: string,
   userId: string,
   requestType: 'image_generation' | 'text_generation',
   cost: number,
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'refunded',
+  status: 'pending' | 'processing' | 'completed' | 'failed',
   errorMessage?: string
 ): Promise<void> {
   // Check if request already exists
@@ -298,14 +279,13 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ ...result, balance: deductResult.balance });
       } catch (error) {
-        // Refund on failure
-        await refundCredits(userId, request_id, cost, 'テキスト生成失敗による返金');
+        // Record failure (no refund — API処理実行単位課金)
         await recordRequest(
           request_id,
           userId,
           'text_generation',
           cost,
-          'refunded',
+          'failed',
           error instanceof Error ? error.message : 'Unknown error'
         );
 
@@ -359,39 +339,29 @@ export async function POST(request: NextRequest) {
 
           return NextResponse.json({ ...result, balance: deductResult.balance });
         } else {
-          // Refund on failure
-          await refundCredits(userId, request_id, cost, '画像生成失敗による返金');
+          // Record failure (no refund — API処理実行単位課金)
           await recordRequest(
             request_id,
             userId,
             'image_generation',
             cost,
-            'refunded',
+            'failed',
             result.error
           );
 
-          // Return balance after refund
-          const { data: credits } = await getSupabase()
-            .from('user_credits')
-            .select('balance')
-            .eq('user_id', userId)
-            .single();
-
           return NextResponse.json({
             ...result,
-            balance: credits?.balance,
-            refunded: true,
+            balance: deductResult.balance,
           });
         }
       } catch (error) {
-        // Refund on exception
-        await refundCredits(userId, request_id, cost, '画像生成エラーによる返金');
+        // Record failure (no refund — API処理実行単位課金)
         await recordRequest(
           request_id,
           userId,
           'image_generation',
           cost,
-          'refunded',
+          'failed',
           error instanceof Error ? error.message : 'Unknown error'
         );
 
@@ -442,13 +412,13 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ ...result, balance: deductResult.balance });
       } catch (error) {
-        await refundCredits(userId, request_id, cost, 'OCR失敗による返金');
+        // Record failure (no refund — API処理実行単位課金)
         await recordRequest(
           request_id,
           userId,
           'text_generation',
           cost,
-          'refunded',
+          'failed',
           error instanceof Error ? error.message : 'Unknown error'
         );
         throw error;
