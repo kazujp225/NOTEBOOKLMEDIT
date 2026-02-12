@@ -16,8 +16,8 @@ const GEMINI_TEXT_MODEL = 'gemini-2.0-flash';
 
 // Credit costs
 const COSTS = {
-  image_generation: 10,  // 画像生成: 10クレジット
-  text_generation: 1,    // テキスト生成: 1クレジット
+  image_generation: 13,  // 画像生成: 13クレジット (~$0.134 × 100)
+  text_generation: 1,    // テキスト生成: 1クレジット (~$0.00075 × 100, 最低1)
 };
 
 // 出力画像サイズの型定義
