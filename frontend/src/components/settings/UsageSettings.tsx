@@ -138,14 +138,14 @@ export function UsageSettings({ isOpen, onClose }: UsageSettingsProps) {
                             tx.transaction_type === 'deduct'
                               ? 'bg-red-100'
                               : tx.transaction_type === 'refund'
-                              ? 'bg-green-100'
+                              ? 'bg-blue-100'
                               : 'bg-blue-100'
                           )}
                         >
                           {tx.transaction_type === 'deduct' ? (
                             <ArrowDown className="w-4 h-4 text-red-600" />
                           ) : tx.transaction_type === 'refund' ? (
-                            <ArrowUp className="w-4 h-4 text-green-600" />
+                            <ArrowUp className="w-4 h-4 text-blue-600" />
                           ) : (
                             <Gift className="w-4 h-4 text-blue-600" />
                           )}
@@ -200,7 +200,7 @@ export function UsageSettings({ isOpen, onClose }: UsageSettingsProps) {
         <div className="p-6 border-t border-gray-100 bg-gray-50">
           <p className="text-xs text-gray-500 text-center">
             初回登録時に100クレジットが付与されます。
-            API呼び出しが失敗した場合、クレジットは自動的に返金されます。
+            処理実行時にクレジットが消費されます。
           </p>
         </div>
       </div>
