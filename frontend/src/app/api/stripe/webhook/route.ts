@@ -7,16 +7,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-01-28.clover',
-});
+function getStripe() {
+  return new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: '2026-01-28.clover',
+  });
+}
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 export async function POST(request: NextRequest) {
+  const stripe = getStripe();
+  const supabaseAdmin = getSupabaseAdmin();
+
   const body = await request.text();
   const sig = request.headers.get('stripe-signature');
 
@@ -99,7 +106,6 @@ export async function POST(request: NextRequest) {
 
       if (txError) {
         console.error('Failed to record transaction:', txError);
-        // Credits already added, so we just log the error
       }
 
       console.log(`Credits added: user=${userId}, amount=${creditAmount}, new_balance=${balanceAfter}`);

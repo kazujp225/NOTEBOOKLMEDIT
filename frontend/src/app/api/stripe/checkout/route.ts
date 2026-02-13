@@ -8,20 +8,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-01-28.clover',
-});
+function getStripe() {
+  return new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: '2026-01-28.clover',
+  });
+}
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 const CREDIT_AMOUNT = 100_000;
 const PRICE_YEN = 10_000;
 
 export async function POST(request: NextRequest) {
   try {
+    const stripe = getStripe();
+    const supabaseAdmin = getSupabaseAdmin();
+
     // Authenticate user
     const authHeader = request.headers.get('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
