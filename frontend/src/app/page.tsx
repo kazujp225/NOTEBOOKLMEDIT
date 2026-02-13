@@ -480,7 +480,7 @@ function UsageTab() {
       )}
 
       <p className="text-xs text-gray-400 mt-4">
-        初回登録時に10,000クレジット付与。処理開始時にクレジットが消費されます。
+        初回登録時に4,500クレジット付与（画像生成3回分）。処理開始時にクレジットが消費されます。
       </p>
     </div>
   );
@@ -670,7 +670,7 @@ function SettingsTab() {
                 <p className="text-xs text-gray-400">画像生成・インペイント</p>
               </div>
             </div>
-            <span className="text-xs text-gray-400 font-mono tabular-nums">13cr / 回</span>
+            <span className="text-xs text-gray-400 font-mono tabular-nums">1,500cr / 回</span>
           </div>
           <div className="px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -682,7 +682,7 @@ function SettingsTab() {
                 <p className="text-xs text-gray-400">OCR・テキスト候補生成</p>
               </div>
             </div>
-            <span className="text-xs text-gray-400 font-mono tabular-nums">1cr / 回</span>
+            <span className="text-xs text-gray-400 font-mono tabular-nums">15cr / 回</span>
           </div>
         </div>
       </div>
@@ -724,7 +724,7 @@ function TermsTab() {
         {
           title: '4-1. クレジットの付与',
           items: [
-            '新規アカウント登録時に10,000クレジットが無償で付与されます。',
+            '新規アカウント登録時に4,500クレジットが無償で付与されます（画像生成3回分）。',
             '運営者は、キャンペーン等により追加クレジットを付与する場合があります。',
             'クレジットの付与条件・数量は、運営者の裁量により予告なく変更されることがあります。',
           ],
@@ -732,9 +732,9 @@ function TermsTab() {
         {
           title: '4-2. クレジットの消費',
           items: [
-            '画像生成（AI修正・インペイント）: 13クレジット / 回',
-            'テキスト生成（OCR・候補生成）: 1クレジット / 回',
-            '一括編集: 対象ページ数 × 13クレジット / 回',
+            '画像生成（AI修正・インペイント）: 1,500クレジット / 回',
+            'テキスト生成（OCR・候補生成）: 15クレジット / 回',
+            '一括編集: 対象ページ数 × 1,500クレジット / 回',
             'クレジットは各API呼び出しの実行前に即時差し引かれます。',
           ],
         },

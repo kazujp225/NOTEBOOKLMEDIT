@@ -669,15 +669,15 @@ function SettingsPanel() {
         <div className="space-y-3">
           <div className="flex items-center justify-between py-2 border-b border-gray-50">
             <span className="text-sm text-gray-600">初回登録クレジット</span>
-            <span className="text-sm font-medium text-gray-900 tabular-nums">10,000 cr</span>
+            <span className="text-sm font-medium text-gray-900 tabular-nums">4,500 cr</span>
           </div>
           <div className="flex items-center justify-between py-2 border-b border-gray-50">
             <span className="text-sm text-gray-600">画像生成コスト</span>
-            <span className="text-sm font-medium text-gray-900 tabular-nums">13 cr / 回</span>
+            <span className="text-sm font-medium text-gray-900 tabular-nums">1,500 cr / 回</span>
           </div>
           <div className="flex items-center justify-between py-2 border-b border-gray-50">
             <span className="text-sm text-gray-600">テキスト生成コスト</span>
-            <span className="text-sm font-medium text-gray-900 tabular-nums">1 cr / 回</span>
+            <span className="text-sm font-medium text-gray-900 tabular-nums">15 cr / 回</span>
           </div>
         </div>
         <p className="text-xs text-gray-400 mt-4">

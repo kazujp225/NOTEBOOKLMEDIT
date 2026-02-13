@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ============================================
 CREATE TABLE IF NOT EXISTS user_credits (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  balance INTEGER NOT NULL DEFAULT 10000,  -- 初期クレジット10,000
+  balance INTEGER NOT NULL DEFAULT 4500,  -- 初期クレジット4,500（画像生成3回分）
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -253,7 +253,7 @@ CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO user_credits (user_id, balance)
-  VALUES (NEW.id, 10000)  -- 初期クレジット10,000
+  VALUES (NEW.id, 4500)  -- 初期クレジット4,500（画像生成3回分）
   ON CONFLICT (user_id) DO NOTHING;
   RETURN NEW;
 END;
@@ -279,7 +279,7 @@ BEGIN
 
   IF v_balance IS NULL THEN
     -- ユーザーが存在しない場合は作成
-    INSERT INTO user_credits (user_id, balance) VALUES (p_user_id, 10000)
+    INSERT INTO user_credits (user_id, balance) VALUES (p_user_id, 4500)
     ON CONFLICT (user_id) DO NOTHING
     RETURNING balance INTO v_balance;
 
