@@ -315,7 +315,13 @@ function UsageDonut({ imageCount, textCount }: { imageCount: number; textCount: 
   );
 }
 
-async function purchaseCredits(): Promise<{ url?: string; error?: string }> {
+const CREDIT_PLANS = [
+  { id: 'light',    price: 1_000,  credits: 10_000,  label: 'Light',    imageCount: 6,  textCount: 666 },
+  { id: 'standard', price: 5_000,  credits: 50_000,  label: 'Standard', imageCount: 33, textCount: 3333 },
+  { id: 'pro',      price: 10_000, credits: 100_000, label: 'Pro',      imageCount: 66, textCount: 6666 },
+] as const;
+
+async function purchaseCredits(planId: string): Promise<{ url?: string; error?: string }> {
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const supabase = createClient(
@@ -331,6 +337,7 @@ async function purchaseCredits(): Promise<{ url?: string; error?: string }> {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
       },
+      body: JSON.stringify({ plan: planId }),
     });
 
     const data = await res.json();
@@ -344,7 +351,7 @@ async function purchaseCredits(): Promise<{ url?: string; error?: string }> {
 function UsageTab() {
   const [creditsInfo, setCreditsInfo] = useState<CreditsInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isPurchasing, setIsPurchasing] = useState(false);
+  const [purchasingPlan, setPurchasingPlan] = useState<string | null>(null);
 
   const loadCredits = async () => {
     setIsLoading(true);
@@ -355,14 +362,14 @@ function UsageTab() {
 
   useEffect(() => { loadCredits(); }, []);
 
-  const handlePurchase = async () => {
-    setIsPurchasing(true);
-    const { url, error } = await purchaseCredits();
+  const handlePurchase = async (planId: string) => {
+    setPurchasingPlan(planId);
+    const { url, error } = await purchaseCredits(planId);
     if (url) {
       window.location.href = url;
     } else {
       alert(error || 'エラーが発生しました');
-      setIsPurchasing(false);
+      setPurchasingPlan(null);
     }
   };
 
@@ -465,37 +472,77 @@ function UsageTab() {
         </div>
       </div>
 
-      {/* Purchase Card */}
-      <div className="mb-4 bg-gradient-to-r from-gray-900 to-gray-800 rounded-xl p-6 text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-8 translate-x-8" />
-        <div className="absolute bottom-0 left-1/2 w-24 h-24 bg-white/5 rounded-full translate-y-12" />
-        <div className="relative">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                <span className="text-xs font-medium text-white/60 uppercase tracking-wider">Credit Top-up</span>
-              </div>
-              <p className="text-2xl font-bold mb-1">100,000 <span className="text-base font-normal text-white/60">クレジット</span></p>
-              <p className="text-sm text-white/50">画像生成 約66回分 ・ テキスト生成 約6,666回分</p>
-            </div>
-            <div className="text-right">
-              <p className="text-3xl font-bold">¥10,000</p>
-              <button
-                onClick={handlePurchase}
-                disabled={isPurchasing}
-                className="mt-3 inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-900 font-medium text-sm rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
-              >
-                {isPurchasing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <CreditCard className="w-4 h-4" />
+      {/* Credit Plans - Google style */}
+      <div className="mb-4">
+        <div className="grid grid-cols-3 gap-4">
+          {CREDIT_PLANS.map((plan) => {
+            const colors = {
+              light:    { bg: 'bg-[#e8f0fe]', accent: 'text-[#1a73e8]', btn: 'bg-[#1a73e8] hover:bg-[#1557b0]', ring: 'ring-[#1a73e8]', icon: 'bg-[#1a73e8]' },
+              standard: { bg: 'bg-[#fce8e6]', accent: 'text-[#d93025]', btn: 'bg-[#d93025] hover:bg-[#b3261e]', ring: 'ring-[#d93025]', icon: 'bg-[#d93025]' },
+              pro:      { bg: 'bg-[#e6f4ea]', accent: 'text-[#1e8e3e]', btn: 'bg-[#1e8e3e] hover:bg-[#188038]', ring: 'ring-[#1e8e3e]', icon: 'bg-[#1e8e3e]' },
+            }[plan.id]!;
+            const isPopular = plan.id === 'standard';
+
+            return (
+              <div
+                key={plan.id}
+                className={cn(
+                  'relative rounded-2xl flex flex-col overflow-hidden transition-all',
+                  isPopular ? `ring-2 ${colors.ring}` : 'ring-1 ring-gray-200'
                 )}
-                {isPurchasing ? '処理中...' : '購入する'}
-                {!isPurchasing && <ArrowRight className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-          </div>
+              >
+                {/* Color header */}
+                <div className={cn('px-6 pt-6 pb-5', colors.bg)}>
+                  <div className="flex items-center gap-2.5 mb-4">
+                    <div className={cn('w-8 h-8 rounded-full flex items-center justify-center', colors.icon)}>
+                      <Coins className="w-4 h-4 text-white" />
+                    </div>
+                    <span className={cn('text-sm font-medium', colors.accent)}>{plan.label}</span>
+                    {isPopular && (
+                      <span className="ml-auto text-[10px] font-medium bg-white/80 text-gray-600 px-2 py-0.5 rounded-full">
+                        おすすめ
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-normal text-gray-900">¥{plan.price.toLocaleString()}</span>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-1">{plan.credits.toLocaleString()} クレジット</p>
+                </div>
+
+                {/* Features */}
+                <div className="px-6 py-5 flex-1 bg-white">
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <Check className={cn('w-4 h-4 mt-0.5 flex-shrink-0', colors.accent)} />
+                      <span className="text-sm text-gray-700">画像生成・テキスト生成に利用可能</span>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <Check className={cn('w-4 h-4 mt-0.5 flex-shrink-0', colors.accent)} />
+                      <span className="text-sm text-gray-700">有効期限なし</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Button */}
+                <div className="px-6 pb-6 bg-white">
+                  <button
+                    onClick={() => handlePurchase(plan.id)}
+                    disabled={purchasingPlan !== null}
+                    className={cn(
+                      'w-full flex items-center justify-center gap-2 py-3 text-sm font-medium text-white rounded-full transition-colors disabled:opacity-50',
+                      colors.btn
+                    )}
+                  >
+                    {purchasingPlan === plan.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : null}
+                    {purchasingPlan === plan.id ? '処理中...' : '購入する'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

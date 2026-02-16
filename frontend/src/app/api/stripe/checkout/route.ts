@@ -1,7 +1,7 @@
 /**
  * Stripe Checkout Session API
  * POST: Creates a Stripe Checkout Session for credit purchase
- * ¥10,000 → 100,000 credits
+ * 3 plans: Light ¥1,000 / Standard ¥5,000 / Pro ¥10,000
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -21,8 +21,11 @@ function getSupabaseAdmin() {
   );
 }
 
-const CREDIT_AMOUNT = 100_000;
-const PRICE_YEN = 10_000;
+const PLANS: Record<string, { price: number; credits: number; name: string }> = {
+  light:    { price: 1_000,  credits: 10_000,  name: 'Light' },
+  standard: { price: 5_000,  credits: 50_000,  name: 'Standard' },
+  pro:      { price: 10_000, credits: 100_000, name: 'Pro' },
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,6 +45,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Get plan from request body
+    const body = await request.json().catch(() => ({}));
+    const planId = body.plan || 'pro';
+    const plan = PLANS[planId];
+
+    if (!plan) {
+      return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
+    }
+
     // Determine URLs
     const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -53,10 +65,10 @@ export async function POST(request: NextRequest) {
           price_data: {
             currency: 'jpy',
             product_data: {
-              name: 'オタスケPDF クレジット',
-              description: `${CREDIT_AMOUNT.toLocaleString()} クレジット（画像生成 約${Math.floor(CREDIT_AMOUNT / 1500)}回分）`,
+              name: `オタスケPDF クレジット（${plan.name}）`,
+              description: `${plan.credits.toLocaleString()} クレジット（画像生成 約${Math.floor(plan.credits / 1500)}回分）`,
             },
-            unit_amount: PRICE_YEN,
+            unit_amount: plan.price,
           },
           quantity: 1,
         },
@@ -67,7 +79,8 @@ export async function POST(request: NextRequest) {
       metadata: {
         user_id: user.id,
         user_email: user.email || '',
-        credit_amount: CREDIT_AMOUNT.toString(),
+        credit_amount: plan.credits.toString(),
+        plan_id: planId,
       },
       customer_email: user.email,
     });
