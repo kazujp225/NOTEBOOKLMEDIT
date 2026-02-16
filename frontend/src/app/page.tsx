@@ -635,13 +635,14 @@ function SettingsTab() {
     try {
       const { error } = await updateUserEmail(newEmail.trim());
       if (error) {
-        showSettingsMessage('error', error.message);
+        console.error('Email update error:', error.message);
+        showSettingsMessage('error', 'ネットワークエラーが発生しました。もう一度お試しください。');
       } else {
         showSettingsMessage('success', '確認メールを送信しました。新しいメールアドレスに届いたリンクをクリックして変更を完了してください。');
         setNewEmail('');
       }
     } catch {
-      showSettingsMessage('error', 'エラーが発生しました');
+      showSettingsMessage('error', 'ネットワークエラーが発生しました。もう一度お試しください。');
     } finally {
       setIsUpdating(false);
     }
@@ -661,7 +662,8 @@ function SettingsTab() {
     try {
       const { error } = await updateUserPassword(newPassword);
       if (error) {
-        showSettingsMessage('error', error.message);
+        console.error('Password update error:', error.message);
+        showSettingsMessage('error', 'ネットワークエラーが発生しました。もう一度お試しください。');
       } else {
         showSettingsMessage('success', 'パスワードを変更しました');
         setCurrentPassword('');
@@ -669,7 +671,7 @@ function SettingsTab() {
         setConfirmNewPassword('');
       }
     } catch {
-      showSettingsMessage('error', 'エラーが発生しました');
+      showSettingsMessage('error', 'ネットワークエラーが発生しました。もう一度お試しください。');
     } finally {
       setIsUpdating(false);
     }

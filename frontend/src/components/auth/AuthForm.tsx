@@ -48,7 +48,8 @@ export function AuthForm({ onSuccess }: AuthFormProps) {
           if (error.message.includes('Invalid login credentials')) {
             setError('メールアドレスまたはパスワードが間違っています');
           } else {
-            setError(error.message);
+            console.error('Login error:', error.message);
+            setError('ネットワークエラーが発生しました。もう一度お試しください。');
           }
         } else {
           onSuccess();
@@ -59,7 +60,8 @@ export function AuthForm({ onSuccess }: AuthFormProps) {
           if (error.message.includes('already registered')) {
             setError('このメールアドレスは既に登録されています');
           } else {
-            setError(error.message);
+            console.error('Signup error:', error.message);
+            setError('ネットワークエラーが発生しました。もう一度お試しください。');
           }
         } else if (data?.user?.identities?.length === 0) {
           setError('このメールアドレスは既に登録されています');
@@ -68,7 +70,7 @@ export function AuthForm({ onSuccess }: AuthFormProps) {
         }
       }
     } catch (err) {
-      setError('エラーが発生しました。もう一度お試しください。');
+      setError('ネットワークエラーが発生しました。もう一度お試しください。');
       console.error(err);
     } finally {
       setIsLoading(false);
