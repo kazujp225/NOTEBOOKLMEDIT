@@ -66,7 +66,8 @@ export function Viewer({ projectId }: ViewerProps) {
           setCurrentPageNumber(issuesData[0].page_number);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load project');
+        console.error('Load project error:', err);
+        setError('ネットワークエラーが発生しました。もう一度お試しください。');
       } finally {
         setLoading(false);
       }

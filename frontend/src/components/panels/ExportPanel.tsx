@@ -127,7 +127,7 @@ export function ExportPanel({ projectId, isOpen, onClose }: ExportPanelProps) {
         ...prev,
         pdf: {
           status: 'error',
-          error: error instanceof Error ? error.message : 'PDF生成に失敗しました',
+          error: 'ネットワークエラーが発生しました。もう一度お試しください。',
         },
       }));
     }

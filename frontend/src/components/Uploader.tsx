@@ -146,7 +146,7 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
       }, 800);
     } catch (err) {
       console.error('File processing error:', err);
-      setError(err instanceof Error ? err.message : 'ファイル処理に失敗しました');
+      setError('ネットワークエラーが発生しました。もう一度お試しください。');
       setUploadState('error');
     }
   };
