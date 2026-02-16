@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
             currency: 'jpy',
             product_data: {
               name: `オタスケPDF クレジット（${plan.name}）`,
-              description: `${plan.credits.toLocaleString()} クレジット（画像生成 約${Math.floor(plan.credits / 1500)}回分）`,
+              description: `${plan.credits.toLocaleString()} クレジット`,
             },
             unit_amount: plan.price,
           },
