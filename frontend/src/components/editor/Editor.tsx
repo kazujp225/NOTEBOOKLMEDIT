@@ -85,6 +85,14 @@ export function Editor({ projectId }: EditorProps) {
         if (loadedProject) {
           setProject(loadedProject);
 
+          // Detect orphan metadata: more pages in store than loaded from IndexedDB
+          if (projectMeta && loadedProject.pages.length < projectMeta.pages.length) {
+            addToast(
+              'warning',
+              `${projectMeta.pages.length - loadedProject.pages.length} ページの画像データが見つかりません。PDFを再アップロードしてください。`
+            );
+          }
+
           // Select first unresolved issue
           const firstUnresolved = loadedProject.issues.find(
             (i) => i.status !== 'corrected' && i.status !== 'skipped'
@@ -470,6 +478,10 @@ export function Editor({ projectId }: EditorProps) {
 
   const handleSave = useCallback(async () => {
     if (!project) return;
+    if (project.pages.length === 0) {
+      addToast('warning', '保存できるページがありません（画像データが読み込まれていません）');
+      return;
+    }
     try {
       // Save all page images to IndexedDB
       for (const page of project.pages) {
@@ -478,7 +490,7 @@ export function Editor({ projectId }: EditorProps) {
       }
       // Update project metadata timestamp
       updateProject(projectId, {});
-      addToast('success', '保存しました');
+      addToast('success', `保存しました (${project.pages.length} ページ)`);
     } catch (err) {
       console.error('Save failed:', err);
       addToast('error', '保存に失敗しました');

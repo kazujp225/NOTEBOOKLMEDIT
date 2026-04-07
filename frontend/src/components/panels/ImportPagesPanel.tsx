@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { X, FolderInput, Check, Loader2, Inbox, ArrowLeft } from 'lucide-react';
+import { X, FolderInput, Check, Loader2, Inbox, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore, type Project, type PageData } from '@/lib/store';
 
@@ -16,6 +16,7 @@ export function ImportPagesPanel({ isOpen, onClose, currentProjectId, onImport }
   const [isVisible, setIsVisible] = useState(false);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [sourcePages, setSourcePages] = useState<PageData[]>([]);
+  const [sourceMetaPageCount, setSourceMetaPageCount] = useState<number>(0);
   const [loadingSource, setLoadingSource] = useState(false);
   const [selectedPageNumbers, setSelectedPageNumbers] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
@@ -43,8 +44,13 @@ export function ImportPagesPanel({ isOpen, onClose, currentProjectId, onImport }
   useEffect(() => {
     if (!selectedSourceId) {
       setSourcePages([]);
+      setSourceMetaPageCount(0);
       return;
     }
+    // Capture metadata-side page count immediately so we can detect orphan metadata
+    const meta = projects.find((p) => p.id === selectedSourceId);
+    setSourceMetaPageCount(meta?.pages.length || 0);
+
     let cancelled = false;
     setLoadingSource(true);
     setSelectedPageNumbers(new Set());
@@ -60,7 +66,7 @@ export function ImportPagesPanel({ isOpen, onClose, currentProjectId, onImport }
     return () => {
       cancelled = true;
     };
-  }, [selectedSourceId, loadProjectWithImages]);
+  }, [selectedSourceId, loadProjectWithImages, projects]);
 
   const handleClose = () => {
     setIsVisible(false);
@@ -194,9 +200,28 @@ export function ImportPagesPanel({ isOpen, onClose, currentProjectId, onImport }
                   <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
                 </div>
               ) : sourcePages.length === 0 ? (
-                <div className="text-center text-sm text-gray-400 py-12">
-                  ページがありません
-                </div>
+                sourceMetaPageCount > 0 ? (
+                  // Metadata says pages exist but none loaded → IndexedDB images are missing
+                  <div className="flex flex-col items-center text-center py-12 px-6">
+                    <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-4">
+                      <AlertTriangle className="w-6 h-6 text-amber-600" />
+                    </div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                      ページの画像データが見つかりません
+                    </h4>
+                    <p className="text-xs text-gray-500 max-w-md leading-relaxed">
+                      このプロジェクトにはメタデータ上 {sourceMetaPageCount} ページありますが、
+                      ブラウザのIndexedDBから画像を読み込めませんでした。
+                      <br /><br />
+                      ストレージがクリアされた、または別のブラウザで作成された可能性があります。
+                      該当のPDFを再アップロードしてください。
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-center text-sm text-gray-400 py-12">
+                    このプロジェクトにはページがありません
+                  </div>
+                )
               ) : (
                 <>
                   <div className="flex items-center justify-between mb-4">

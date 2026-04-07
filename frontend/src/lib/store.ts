@@ -291,7 +291,12 @@ export const useAppStore = create<AppState>()(
 
       loadProjectWithImages: async (id) => {
         const project = get().getProject(id);
-        if (!project) return null;
+        if (!project) {
+          console.warn('[loadProjectWithImages] project not found in store:', id);
+          return null;
+        }
+
+        const missingKeys: string[] = [];
 
         // Load all pages in parallel, with cloud fallback
         const pagesWithImages = await Promise.all(
@@ -300,6 +305,9 @@ export const useAppStore = create<AppState>()(
               getImage(pageMeta.imageKey),
               getImage(pageMeta.thumbnailKey),
             ]);
+
+            if (!imageDataUrl) missingKeys.push(pageMeta.imageKey);
+            if (!thumbnailDataUrl) missingKeys.push(pageMeta.thumbnailKey);
 
             // Cloud fallback: download from Supabase if not in IndexedDB
             if (!imageDataUrl && pageMeta.cloudImagePath) {
@@ -350,10 +358,18 @@ export const useAppStore = create<AppState>()(
           })
         );
 
+        const loadedPages = pagesWithImages.filter((p): p is PageData => p !== null);
+        if (loadedPages.length !== project.pages.length) {
+          console.warn(
+            `[loadProjectWithImages] project ${id} (${project.name}): metadata has ${project.pages.length} pages but only ${loadedPages.length} loaded from IndexedDB. Missing keys:`,
+            missingKeys
+          );
+        }
+
         return {
           ...project,
           textOverlays: project.textOverlays || [],
-          pages: pagesWithImages.filter((p): p is PageData => p !== null),
+          pages: loadedPages,
         };
       },
 
