@@ -200,28 +200,33 @@ export function ImportPagesPanel({ isOpen, onClose, currentProjectId, onImport }
                   <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
                 </div>
               ) : sourcePages.length === 0 ? (
-                sourceMetaPageCount > 0 ? (
-                  // Metadata says pages exist but none loaded → IndexedDB images are missing
-                  <div className="flex flex-col items-center text-center py-12 px-6">
-                    <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-4">
-                      <AlertTriangle className="w-6 h-6 text-amber-600" />
-                    </div>
-                    <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                      ページの画像データが見つかりません
-                    </h4>
-                    <p className="text-xs text-gray-500 max-w-md leading-relaxed">
-                      このプロジェクトにはメタデータ上 {sourceMetaPageCount} ページありますが、
-                      ブラウザのIndexedDBから画像を読み込めませんでした。
-                      <br /><br />
-                      ストレージがクリアされた、または別のブラウザで作成された可能性があります。
-                      該当のPDFを再アップロードしてください。
-                    </p>
+                <div className="flex flex-col items-center text-center py-12 px-6">
+                  <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-4">
+                    <AlertTriangle className="w-6 h-6 text-amber-600" />
                   </div>
-                ) : (
-                  <div className="text-center text-sm text-gray-400 py-12">
-                    このプロジェクトにはページがありません
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                    {sourceMetaPageCount > 0
+                      ? 'ページの画像データが見つかりません'
+                      : 'このプロジェクトにはページがありません'}
+                  </h4>
+                  <p className="text-xs text-gray-500 max-w-md leading-relaxed">
+                    {sourceMetaPageCount > 0 ? (
+                      <>
+                        メタデータ上は <strong>{sourceMetaPageCount}</strong> ページありますが、ブラウザの
+                        IndexedDBから画像が読み込めませんでした。
+                        <br />
+                        ストレージがクリアされた、別ブラウザで作成された、または容量超過の可能性があります。
+                        <br />
+                        該当のPDFを再アップロードしてください。
+                      </>
+                    ) : (
+                      <>このプロジェクトにはページがありません。</>
+                    )}
+                  </p>
+                  <div className="mt-4 p-2 bg-gray-100 rounded text-[10px] text-gray-500 font-mono break-all max-w-md">
+                    debug: id={selectedSourceId} / meta_pages={sourceMetaPageCount} / loaded={sourcePages.length}
                   </div>
-                )
+                </div>
               ) : (
                 <>
                   <div className="flex items-center justify-between mb-4">

@@ -290,11 +290,15 @@ export const useAppStore = create<AppState>()(
       },
 
       loadProjectWithImages: async (id) => {
+        console.log('[loadProjectWithImages] called for id:', id);
         const project = get().getProject(id);
         if (!project) {
           console.warn('[loadProjectWithImages] project not found in store:', id);
           return null;
         }
+        console.log(
+          `[loadProjectWithImages] project "${project.name}" has ${project.pages.length} pages in metadata`
+        );
 
         const missingKeys: string[] = [];
 
