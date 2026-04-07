@@ -48,11 +48,33 @@ function getFileIconBg(file: File) {
   }
 }
 
+interface CreatedProject {
+  id: string;
+  name: string;
+  pageCount: number;
+}
+
+interface UploadProgress {
+  fileIndex: number;
+  fileTotal: number;
+  fileName: string;
+  pageCurrent: number;
+  pageTotal: number;
+}
+
 export function Uploader({ onUploadComplete }: UploaderProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [uploadState, setUploadState] = useState<UploadState>('idle');
-  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [progress, setProgress] = useState<UploadProgress>({
+    fileIndex: 0,
+    fileTotal: 0,
+    fileName: '',
+    pageCurrent: 0,
+    pageTotal: 0,
+  });
   const [error, setError] = useState<string | null>(null);
+  const [createdProjects, setCreatedProjects] = useState<CreatedProject[]>([]);
+  const [failedFiles, setFailedFiles] = useState<string[]>([]);
 
   const addProject = useAppStore((state) => state.addProject);
 
@@ -72,7 +94,7 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: ACCEPTED_TYPES,
-    maxFiles: 20, // 画像の場合は複数ファイル対応
+    maxFiles: 20,
     disabled: uploadState === 'processing',
   });
 
@@ -80,93 +102,152 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
     if (files.length === 0) return;
 
     setUploadState('processing');
-    setProgress({ current: 0, total: 0 });
+    setError(null);
+    setCreatedProjects([]);
+    setFailedFiles([]);
 
-    try {
-      const firstFile = files[0];
-      const fileType = getFileType(firstFile);
+    // Group images together as a single collection (existing behavior).
+    // PDF and PPTX files each become their own project.
+    const docFiles = files.filter((f) => {
+      const t = getFileType(f);
+      return t === 'pdf' || t === 'pptx';
+    });
+    const imageFiles = files.filter((f) => getFileType(f) === 'image');
 
-      let pages;
-      let projectName: string;
+    // "Tasks" — each entry is one project to create
+    type Task =
+      | { kind: 'pdf'; file: File }
+      | { kind: 'pptx'; file: File }
+      | { kind: 'images'; files: File[] };
 
-      if (fileType === 'pdf') {
-        const { processPdf } = await import('@/lib/pdf-utils');
-        pages = await processPdf(firstFile, (current, total) => {
-          setProgress({ current, total });
-        });
-        projectName = firstFile.name.replace(/\.pdf$/i, '');
+    const tasks: Task[] = [
+      ...docFiles.map<Task>((file) =>
+        getFileType(file) === 'pdf' ? { kind: 'pdf', file } : { kind: 'pptx', file }
+      ),
+      ...(imageFiles.length > 0 ? [{ kind: 'images', files: imageFiles } as Task] : []),
+    ];
 
-      } else if (fileType === 'pptx') {
-        const { processPptx } = await import('@/lib/pdf-utils');
-        pages = await processPptx(firstFile, (current, total) => {
-          setProgress({ current, total });
-        });
-        projectName = firstFile.name.replace(/\.pptx$/i, '');
+    const created: CreatedProject[] = [];
+    const failed: string[] = [];
 
-      } else if (fileType === 'image') {
-        const { processImages } = await import('@/lib/pdf-utils');
-        pages = await processImages(files, (current, total) => {
-          setProgress({ current, total });
-        });
-        projectName = files.length === 1
-          ? firstFile.name.replace(/\.[^.]+$/, '')
-          : `画像 ${files.length}枚`;
+    for (let i = 0; i < tasks.length; i++) {
+      const task = tasks[i];
+      const fileLabel =
+        task.kind === 'images'
+          ? `画像 ${task.files.length}枚`
+          : task.file.name;
 
-      } else {
-        throw new Error('対応していないファイル形式です');
-      }
-
-      // プロジェクト作成
-      const projectId = generateId();
-      const now = new Date().toISOString();
-
-      await addProject({
-        id: projectId,
-        name: projectName,
-        fileName: firstFile.name,
-        totalPages: pages.length,
-        pages: pages.map((page) => ({
-          pageNumber: page.pageNumber,
-          imageDataUrl: page.imageDataUrl,
-          width: page.width,
-          height: page.height,
-          thumbnailDataUrl: page.thumbnailDataUrl,
-          extractedImages: page.extractedImages?.map((ex) => ({
-            width: ex.width,
-            height: ex.height,
-            sourceName: ex.name,
-            dataUrl: ex.dataUrl,
-          })),
-        })),
-        issues: [],
-        textOverlays: [],
-        status: 'ready',
-        createdAt: now,
-        updatedAt: now,
+      setProgress({
+        fileIndex: i + 1,
+        fileTotal: tasks.length,
+        fileName: fileLabel,
+        pageCurrent: 0,
+        pageTotal: 0,
       });
 
-      setUploadState('complete');
+      try {
+        let pages;
+        let projectName: string;
+        let firstFileName: string;
 
-      setTimeout(() => {
-        onUploadComplete(projectId);
-      }, 800);
-    } catch (err) {
-      console.error('File processing error:', err);
-      setError('ネットワークエラーが発生しました。もう一度お試しください。');
+        if (task.kind === 'pdf') {
+          const { processPdf } = await import('@/lib/pdf-utils');
+          pages = await processPdf(task.file, (current, total) => {
+            setProgress((prev) => ({ ...prev, pageCurrent: current, pageTotal: total }));
+          });
+          projectName = task.file.name.replace(/\.pdf$/i, '');
+          firstFileName = task.file.name;
+        } else if (task.kind === 'pptx') {
+          const { processPptx } = await import('@/lib/pdf-utils');
+          pages = await processPptx(task.file, (current, total) => {
+            setProgress((prev) => ({ ...prev, pageCurrent: current, pageTotal: total }));
+          });
+          projectName = task.file.name.replace(/\.pptx$/i, '');
+          firstFileName = task.file.name;
+        } else {
+          // images
+          const { processImages } = await import('@/lib/pdf-utils');
+          pages = await processImages(task.files, (current, total) => {
+            setProgress((prev) => ({ ...prev, pageCurrent: current, pageTotal: total }));
+          });
+          projectName =
+            task.files.length === 1
+              ? task.files[0].name.replace(/\.[^.]+$/, '')
+              : `画像 ${task.files.length}枚`;
+          firstFileName = task.files[0].name;
+        }
+
+        const projectId = generateId();
+        const now = new Date().toISOString();
+
+        await addProject({
+          id: projectId,
+          name: projectName,
+          fileName: firstFileName,
+          totalPages: pages.length,
+          pages: pages.map((page) => ({
+            pageNumber: page.pageNumber,
+            imageDataUrl: page.imageDataUrl,
+            width: page.width,
+            height: page.height,
+            thumbnailDataUrl: page.thumbnailDataUrl,
+            extractedImages: page.extractedImages?.map((ex) => ({
+              width: ex.width,
+              height: ex.height,
+              sourceName: ex.name,
+              dataUrl: ex.dataUrl,
+            })),
+          })),
+          issues: [],
+          textOverlays: [],
+          status: 'ready',
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        created.push({ id: projectId, name: projectName, pageCount: pages.length });
+        setCreatedProjects([...created]);
+      } catch (err) {
+        console.error(`File processing error for ${fileLabel}:`, err);
+        failed.push(fileLabel);
+        setFailedFiles([...failed]);
+      }
+    }
+
+    if (created.length === 0) {
+      setError('すべてのファイルの処理に失敗しました。もう一度お試しください。');
       setUploadState('error');
+      return;
+    }
+
+    setUploadState('complete');
+
+    // Single project → existing auto-navigate behavior.
+    // Multiple → show the completion list and let the user pick.
+    if (created.length === 1 && failed.length === 0) {
+      setTimeout(() => {
+        onUploadComplete(created[0].id);
+      }, 800);
     }
   };
 
   const handleCancel = () => {
     setFiles([]);
     setUploadState('idle');
-    setProgress({ current: 0, total: 0 });
+    setProgress({ fileIndex: 0, fileTotal: 0, fileName: '', pageCurrent: 0, pageTotal: 0 });
     setError(null);
+    setCreatedProjects([]);
+    setFailedFiles([]);
   };
 
-  const progressPercent = progress.total > 0
-    ? Math.round((progress.current / progress.total) * 100)
-    : 0;
+  // Combined progress: completed files + (current file pageCurrent/pageTotal as a fraction)
+  const fileFraction =
+    progress.pageTotal > 0 ? progress.pageCurrent / progress.pageTotal : 0;
+  const overallFraction =
+    progress.fileTotal > 0
+      ? ((progress.fileIndex - 1) + fileFraction) / progress.fileTotal
+      : 0;
+  const progressPercent = Math.round(overallFraction * 100);
 
   const displayFile = files[0];
   const displayName = files.length === 1
@@ -267,11 +348,16 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
           </div>
 
           <p className="text-sm font-medium text-gray-900 mb-1">
-            ファイルを処理しています
+            {progress.fileTotal > 1
+              ? `ファイル ${progress.fileIndex} / ${progress.fileTotal} を処理中`
+              : 'ファイルを処理しています'}
           </p>
-          <p className="text-xs text-gray-500 mb-5">
-            {progress.total > 0
-              ? `${progress.current} / ${progress.total} ページ`
+          <p className="text-xs text-gray-500 mb-1 truncate max-w-sm mx-auto">
+            {progress.fileName}
+          </p>
+          <p className="text-xs text-gray-400 mb-5">
+            {progress.pageTotal > 0
+              ? `${progress.pageCurrent} / ${progress.pageTotal} ページ`
               : '読み込み中...'}
           </p>
 
@@ -281,19 +367,81 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
               style={{ width: `${progressPercent}%` }}
             />
           </div>
+
+          {createdProjects.length > 0 && (
+            <p className="text-xs text-gray-400 mt-4">
+              {createdProjects.length} 個のプロジェクトを作成済み
+            </p>
+          )}
         </div>
       )}
 
-      {uploadState === 'complete' && (
+      {uploadState === 'complete' && createdProjects.length === 1 && failedFiles.length === 0 && (
         <div className="bg-white rounded-2xl ring-1 ring-gray-200 px-8 py-10 text-center">
           <div className="w-12 h-12 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center">
             <Check className="w-6 h-6 text-green-600" />
           </div>
 
-          <p className="text-sm font-medium text-gray-900 mb-1">
-            完了
-          </p>
+          <p className="text-sm font-medium text-gray-900 mb-1">完了</p>
           <p className="text-xs text-gray-500">エディタを開いています...</p>
+        </div>
+      )}
+
+      {uploadState === 'complete' && (createdProjects.length > 1 || failedFiles.length > 0) && (
+        <div className="bg-white rounded-2xl ring-1 ring-gray-200 overflow-hidden">
+          <div className="px-6 py-5 flex items-center gap-3 border-b border-gray-100">
+            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <Check className="w-5 h-5 text-green-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900">
+                {createdProjects.length} 個のプロジェクトを作成しました
+              </p>
+              {failedFiles.length > 0 && (
+                <p className="text-xs text-red-600 mt-0.5">
+                  {failedFiles.length} 個のファイルが処理に失敗しました
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="max-h-[320px] overflow-y-auto">
+            {createdProjects.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => onUploadComplete(p.id)}
+                className="w-full px-6 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0 text-left"
+              >
+                <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                  <File className="w-4 h-4 text-blue-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
+                  <p className="text-xs text-gray-400">{p.pageCount} ページ</p>
+                </div>
+                <span className="text-xs text-blue-600 font-medium flex-shrink-0">開く →</span>
+              </button>
+            ))}
+            {failedFiles.length > 0 && (
+              <div className="px-6 py-3 bg-red-50 border-t border-red-100">
+                <p className="text-xs text-red-700 font-medium mb-1">処理に失敗:</p>
+                <ul className="text-xs text-red-600 space-y-0.5">
+                  {failedFiles.map((name, i) => (
+                    <li key={i} className="truncate">・{name}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          <div className="px-6 py-4 border-t border-gray-100">
+            <button
+              onClick={handleCancel}
+              className="w-full py-2.5 text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              続けてアップロード
+            </button>
+          </div>
         </div>
       )}
     </div>
