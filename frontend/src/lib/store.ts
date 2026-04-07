@@ -58,6 +58,26 @@ export interface TextOverlay {
   backgroundColor: string;
 }
 
+// Metadata for a single embedded image extracted from a PDF page
+export interface ExtractedImageMeta {
+  id: string;          // stable UUID, used as part of the IndexedDB key
+  imageKey: string;    // IndexedDB key under which the image blob is stored
+  width: number;
+  height: number;
+  sourceName?: string; // PDF XObject name (for debugging)
+}
+
+// Runtime form: image data + (optional) persisted meta.
+// id/imageKey are absent at upload time and populated after addProject saves to IndexedDB.
+export interface ExtractedImageData {
+  id?: string;
+  imageKey?: string;
+  width: number;
+  height: number;
+  sourceName?: string;
+  dataUrl: string;
+}
+
 // Page metadata (without image data)
 export interface PageMeta {
   pageNumber: number;
@@ -66,6 +86,8 @@ export interface PageMeta {
   // Image keys for IndexedDB lookup
   imageKey: string;
   thumbnailKey: string;
+  // Embedded images extracted from the source PDF page
+  extractedImages?: ExtractedImageMeta[];
   // Cloud storage paths
   cloudImagePath?: string;
   cloudThumbnailPath?: string;
@@ -78,6 +100,7 @@ export interface PageData {
   width: number;
   height: number;
   thumbnailDataUrl: string;
+  extractedImages?: ExtractedImageData[];
 }
 
 export interface Project {
@@ -154,12 +177,36 @@ export const useAppStore = create<AppState>()(
           await saveImage(imageKey, page.imageDataUrl);
           await saveImage(thumbnailKey, page.thumbnailDataUrl);
 
+          // Persist embedded extracted images, if any, under stable UUID keys
+          let extractedMetas: ExtractedImageMeta[] | undefined;
+          if (page.extractedImages && page.extractedImages.length > 0) {
+            extractedMetas = [];
+            for (const ex of page.extractedImages) {
+              const id = generateId();
+              const exKey = `${projectMeta.id}/extracted/${id}`;
+              try {
+                await saveImage(exKey, ex.dataUrl);
+                extractedMetas.push({
+                  id,
+                  imageKey: exKey,
+                  width: ex.width,
+                  height: ex.height,
+                  sourceName: ex.sourceName,
+                });
+              } catch (err) {
+                console.warn('[addProject] failed to save extracted image', err);
+              }
+            }
+            if (extractedMetas.length === 0) extractedMetas = undefined;
+          }
+
           pageMetas.push({
             pageNumber: page.pageNumber,
             width: page.width,
             height: page.height,
             imageKey,
             thumbnailKey,
+            extractedImages: extractedMetas,
           });
         }
 
@@ -263,12 +310,34 @@ export const useAppStore = create<AppState>()(
             }
 
             if (imageDataUrl && thumbnailDataUrl) {
+              // Load any extracted images attached to this page
+              let extractedImages: ExtractedImageData[] | undefined;
+              if (pageMeta.extractedImages && pageMeta.extractedImages.length > 0) {
+                const loaded = await Promise.all(
+                  pageMeta.extractedImages.map(async (m): Promise<ExtractedImageData | null> => {
+                    const dataUrl = await getImage(m.imageKey);
+                    if (!dataUrl) return null;
+                    return {
+                      id: m.id,
+                      imageKey: m.imageKey,
+                      width: m.width,
+                      height: m.height,
+                      sourceName: m.sourceName,
+                      dataUrl,
+                    };
+                  })
+                );
+                extractedImages = loaded.filter((x): x is ExtractedImageData => x !== null);
+                if (extractedImages.length === 0) extractedImages = undefined;
+              }
+
               return {
                 pageNumber: pageMeta.pageNumber,
                 width: pageMeta.width,
                 height: pageMeta.height,
                 imageDataUrl,
                 thumbnailDataUrl,
+                extractedImages,
               };
             }
             return null;
@@ -293,6 +362,14 @@ export const useAppStore = create<AppState>()(
         // 1. Delete the target page's images from IndexedDB
         await deleteImage(`${projectId}/page-${pageNumber}`);
         await deleteImage(`${projectId}/thumb-${pageNumber}`);
+
+        // 1b. Delete any extracted images attached to the deleted page
+        const targetPage = project.pages.find((p) => p.pageNumber === pageNumber);
+        if (targetPage?.extractedImages) {
+          for (const ex of targetPage.extractedImages) {
+            await deleteImage(ex.imageKey).catch(() => {});
+          }
+        }
 
         // 2. Renumber subsequent pages: rename their IndexedDB keys (page N → page N-1)
         const subsequent = project.pages

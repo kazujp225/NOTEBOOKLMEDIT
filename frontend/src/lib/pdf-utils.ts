@@ -3,12 +3,140 @@
  * Runs entirely in browser - no backend needed
  */
 
+export interface ExtractedImage {
+  name: string;
+  width: number;
+  height: number;
+  dataUrl: string;
+}
+
 export interface ProcessedPage {
   pageNumber: number;
   imageDataUrl: string;
   thumbnailDataUrl: string;
   width: number;
   height: number;
+  extractedImages?: ExtractedImage[];
+}
+
+/**
+ * Extract embedded image XObjects from a PDF.js page.
+ * Must be called AFTER page.render() so that page.objs has been populated.
+ * Returns each image as a PNG dataURL plus dimensions.
+ * Deduped by XObject name.
+ */
+async function extractImagesFromPage(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  page: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  OPS: any
+): Promise<ExtractedImage[]> {
+  const opList = await page.getOperatorList();
+  const imageOps = new Set<number>([
+    OPS.paintImageXObject,
+    OPS.paintJpegXObject,
+    OPS.paintImageMaskXObject,
+    OPS.paintInlineImageXObject,
+  ]);
+
+  const imageNames = new Set<string>();
+  for (let i = 0; i < opList.fnArray.length; i++) {
+    if (imageOps.has(opList.fnArray[i])) {
+      const args = opList.argsArray[i];
+      if (args && typeof args[0] === 'string') {
+        imageNames.add(args[0]);
+      }
+    }
+  }
+
+  const extracted: ExtractedImage[] = [];
+
+  for (const name of Array.from(imageNames)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let img: any = null;
+    try {
+      // Wait for the object to become available, then read it.
+      // page.objs.get(name, callback) is the safe async form across PDF.js versions.
+      img = await new Promise((resolve) => {
+        try {
+          if (page.objs.has && page.objs.has(name)) {
+            resolve(page.objs.get(name));
+            return;
+          }
+          if (page.commonObjs && page.commonObjs.has && page.commonObjs.has(name)) {
+            resolve(page.commonObjs.get(name));
+            return;
+          }
+          // Fallback: try the callback form
+          page.objs.get(name, (val: unknown) => resolve(val));
+        } catch {
+          resolve(null);
+        }
+      });
+    } catch (err) {
+      console.warn('[extractImagesFromPage] failed to load image', name, err);
+      continue;
+    }
+
+    if (!img || !img.data || !img.width || !img.height) continue;
+
+    const w: number = img.width;
+    const h: number = img.height;
+    const data: Uint8ClampedArray | Uint8Array = img.data;
+
+    // Determine pixel layout. PDF.js ImgData kinds: 1=GRAYSCALE_1BPP, 2=RGB_24BPP, 3=RGBA_32BPP
+    let rgba: Uint8ClampedArray | null = null;
+    const total = w * h;
+
+    if (data.length === total * 4) {
+      // RGBA already
+      rgba = data instanceof Uint8ClampedArray ? data : new Uint8ClampedArray(data);
+    } else if (data.length === total * 3) {
+      // RGB → expand to RGBA
+      rgba = new Uint8ClampedArray(total * 4);
+      for (let i = 0, j = 0; i < data.length; i += 3, j += 4) {
+        rgba[j] = data[i];
+        rgba[j + 1] = data[i + 1];
+        rgba[j + 2] = data[i + 2];
+        rgba[j + 3] = 255;
+      }
+    } else if (data.length === total) {
+      // Grayscale → expand to RGBA
+      rgba = new Uint8ClampedArray(total * 4);
+      for (let i = 0, j = 0; i < data.length; i++, j += 4) {
+        rgba[j] = data[i];
+        rgba[j + 1] = data[i];
+        rgba[j + 2] = data[i];
+        rgba[j + 3] = 255;
+      }
+    } else {
+      // Unknown layout (e.g. masks). Skip rather than corrupt.
+      continue;
+    }
+
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) continue;
+      // Use ctx.createImageData (instead of `new ImageData(...)`) to dodge TS 5.x
+      // strictness around SharedArrayBuffer-backed Uint8ClampedArray.
+      const imageData = ctx.createImageData(w, h);
+      imageData.data.set(rgba);
+      ctx.putImageData(imageData, 0, 0);
+      extracted.push({
+        name,
+        width: w,
+        height: h,
+        dataUrl: canvas.toDataURL('image/png'),
+      });
+    } catch (err) {
+      console.warn('[extractImagesFromPage] canvas conversion failed for', name, err);
+    }
+  }
+
+  return extracted;
 }
 
 /**
@@ -60,12 +188,22 @@ export async function processPdf(
     thumbContext.drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
     const thumbnailDataUrl = thumbCanvas.toDataURL('image/jpeg', 0.7);
 
+    // Extract embedded images from this page (now that page.objs is populated by render)
+    let extractedImages: ExtractedImage[] | undefined;
+    try {
+      extractedImages = await extractImagesFromPage(page, pdfjsLib.OPS);
+      if (extractedImages.length === 0) extractedImages = undefined;
+    } catch (err) {
+      console.warn(`[processPdf] image extraction failed on page ${i}:`, err);
+    }
+
     pages.push({
       pageNumber: i,
       imageDataUrl,
       thumbnailDataUrl,
       width: viewport.width,
       height: viewport.height,
+      extractedImages,
     });
   }
 

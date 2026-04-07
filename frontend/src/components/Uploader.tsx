@@ -131,6 +131,12 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
           width: page.width,
           height: page.height,
           thumbnailDataUrl: page.thumbnailDataUrl,
+          extractedImages: page.extractedImages?.map((ex) => ({
+            width: ex.width,
+            height: ex.height,
+            sourceName: ex.name,
+            dataUrl: ex.dataUrl,
+          })),
         })),
         issues: [],
         textOverlays: [],
