@@ -9,6 +9,7 @@ import {
   Save,
   Download,
   Image as ImageIcon,
+  FolderInput,
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -25,6 +26,7 @@ interface TopBarProps {
   onSave: () => void;
   onOpenLibrary?: () => void;
   libraryCount?: number;
+  onOpenImport?: () => void;
   isExporting?: boolean;
 }
 
@@ -39,6 +41,7 @@ export function TopBar({
   onSave,
   onOpenLibrary,
   libraryCount,
+  onOpenImport,
   isExporting,
 }: TopBarProps) {
   return (
@@ -106,6 +109,17 @@ export function TopBar({
                 {libraryCount > 99 ? '99+' : libraryCount}
               </span>
             )}
+          </button>
+        )}
+
+        {onOpenImport && (
+          <button
+            onClick={onOpenImport}
+            className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
+            aria-label="他のPDFからページを取り込む"
+            title="他のPDFからページを取り込む"
+          >
+            <FolderInput className="w-4 h-4 text-gray-400" />
           </button>
         )}
 

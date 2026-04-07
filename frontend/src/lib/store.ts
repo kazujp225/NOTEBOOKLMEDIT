@@ -140,6 +140,12 @@ interface AppState {
 
   // Page actions
   deletePage: (projectId: string, pageNumber: number) => Promise<void>;
+  movePage: (projectId: string, fromPageNumber: number, toPageNumber: number) => Promise<void>;
+  importPagesFromProject: (
+    targetProjectId: string,
+    sourceProjectId: string,
+    sourcePageNumbers: number[]
+  ) => Promise<void>;
 
   // Issue actions
   addIssue: (projectId: string, issue: Issue) => void;
@@ -435,6 +441,200 @@ export const useAppStore = create<AppState>()(
 
         // Background metadata sync (best-effort; cloud-side issues/overlays cleanup is not fully handled)
         debouncedSyncMetadata(projectId, {});
+      },
+
+      movePage: async (projectId, fromPageNumber, toPageNumber) => {
+        const project = get().getProject(projectId);
+        if (!project) return;
+        if (fromPageNumber === toPageNumber) return;
+
+        const sortedPages = [...project.pages].sort((a, b) => a.pageNumber - b.pageNumber);
+        const fromIdx = sortedPages.findIndex((p) => p.pageNumber === fromPageNumber);
+        if (fromIdx === -1) return;
+
+        // Compute target index. toPageNumber is the desired post-move position (1-indexed).
+        const desiredIdx = Math.max(0, Math.min(sortedPages.length - 1, toPageNumber - 1));
+
+        // Reorder
+        const [moved] = sortedPages.splice(fromIdx, 1);
+        sortedPages.splice(desiredIdx, 0, moved);
+
+        // Build old→new pageNumber map
+        const renames: { oldNum: number; newNum: number }[] = [];
+        sortedPages.forEach((p, i) => {
+          const newNum = i + 1;
+          if (p.pageNumber !== newNum) {
+            renames.push({ oldNum: p.pageNumber, newNum });
+          }
+        });
+
+        // Two-pass IndexedDB rename via temporary keys to avoid collisions:
+        // 1) old key → tmp key
+        // 2) tmp key → new key
+        // (Including extracted images is unnecessary because their keys are stable UUIDs.)
+        for (const r of renames) {
+          const oldImage = `${projectId}/page-${r.oldNum}`;
+          const tmpImage = `${projectId}/__tmp__-page-${r.oldNum}`;
+          const oldThumb = `${projectId}/thumb-${r.oldNum}`;
+          const tmpThumb = `${projectId}/__tmp__-thumb-${r.oldNum}`;
+
+          const imgData = await getImage(oldImage);
+          if (imgData) {
+            await saveImage(tmpImage, imgData);
+            await deleteImage(oldImage);
+          }
+          const thumbData = await getImage(oldThumb);
+          if (thumbData) {
+            await saveImage(tmpThumb, thumbData);
+            await deleteImage(oldThumb);
+          }
+        }
+        for (const r of renames) {
+          const tmpImage = `${projectId}/__tmp__-page-${r.oldNum}`;
+          const newImage = `${projectId}/page-${r.newNum}`;
+          const tmpThumb = `${projectId}/__tmp__-thumb-${r.oldNum}`;
+          const newThumb = `${projectId}/thumb-${r.newNum}`;
+
+          const imgData = await getImage(tmpImage);
+          if (imgData) {
+            await saveImage(newImage, imgData);
+            await deleteImage(tmpImage);
+          }
+          const thumbData = await getImage(tmpThumb);
+          if (thumbData) {
+            await saveImage(newThumb, thumbData);
+            await deleteImage(tmpThumb);
+          }
+        }
+
+        // Build a quick lookup
+        const oldToNew = new Map<number, number>();
+        sortedPages.forEach((p, i) => oldToNew.set(p.pageNumber, i + 1));
+
+        set((state) => ({
+          projects: state.projects.map((p) => {
+            if (p.id !== projectId) return p;
+
+            const newPages: PageMeta[] = sortedPages.map((pm, i) => {
+              const newNum = i + 1;
+              return {
+                ...pm,
+                pageNumber: newNum,
+                imageKey: `${projectId}/page-${newNum}`,
+                thumbnailKey: `${projectId}/thumb-${newNum}`,
+              };
+            });
+
+            const newIssues: Issue[] = p.issues.map((iss) => {
+              const newNum = oldToNew.get(iss.pageNumber);
+              return newNum !== undefined && newNum !== iss.pageNumber
+                ? { ...iss, pageNumber: newNum }
+                : iss;
+            });
+
+            const newOverlays: TextOverlay[] = (p.textOverlays || []).map((o) => {
+              const newNum = oldToNew.get(o.pageNumber);
+              return newNum !== undefined && newNum !== o.pageNumber
+                ? { ...o, pageNumber: newNum }
+                : o;
+            });
+
+            return {
+              ...p,
+              pages: newPages,
+              issues: newIssues,
+              textOverlays: newOverlays,
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        }));
+
+        debouncedSyncMetadata(projectId, {});
+      },
+
+      importPagesFromProject: async (targetProjectId, sourceProjectId, sourcePageNumbers) => {
+        const target = get().getProject(targetProjectId);
+        const source = get().getProject(sourceProjectId);
+        if (!target || !source) return;
+        if (sourcePageNumbers.length === 0) return;
+
+        const sourcePages = source.pages
+          .filter((p) => sourcePageNumbers.includes(p.pageNumber))
+          .sort((a, b) => {
+            // Preserve order according to user selection
+            return sourcePageNumbers.indexOf(a.pageNumber) - sourcePageNumbers.indexOf(b.pageNumber);
+          });
+
+        const startNum = target.pages.length + 1;
+        const newPageMetas: PageMeta[] = [];
+
+        for (let i = 0; i < sourcePages.length; i++) {
+          const src = sourcePages[i];
+          const newNum = startNum + i;
+          const newImageKey = `${targetProjectId}/page-${newNum}`;
+          const newThumbKey = `${targetProjectId}/thumb-${newNum}`;
+
+          // Copy page image
+          const srcImage = await getImage(src.imageKey);
+          if (!srcImage) {
+            console.warn('[importPagesFromProject] missing source image for page', src.pageNumber);
+            continue;
+          }
+          await saveImage(newImageKey, srcImage);
+
+          // Copy thumbnail
+          const srcThumb = await getImage(src.thumbnailKey);
+          if (srcThumb) {
+            await saveImage(newThumbKey, srcThumb);
+          }
+
+          // Copy extracted images with FRESH UUIDs (so source and target stay independent)
+          let newExtracted: ExtractedImageMeta[] | undefined;
+          if (src.extractedImages && src.extractedImages.length > 0) {
+            newExtracted = [];
+            for (const ex of src.extractedImages) {
+              const exData = await getImage(ex.imageKey);
+              if (!exData) continue;
+              const newId = generateId();
+              const newExKey = `${targetProjectId}/extracted/${newId}`;
+              await saveImage(newExKey, exData);
+              newExtracted.push({
+                id: newId,
+                imageKey: newExKey,
+                width: ex.width,
+                height: ex.height,
+                sourceName: ex.sourceName,
+              });
+            }
+            if (newExtracted.length === 0) newExtracted = undefined;
+          }
+
+          newPageMetas.push({
+            pageNumber: newNum,
+            width: src.width,
+            height: src.height,
+            imageKey: newImageKey,
+            thumbnailKey: newThumbKey,
+            extractedImages: newExtracted,
+          });
+        }
+
+        if (newPageMetas.length === 0) return;
+
+        set((state) => ({
+          projects: state.projects.map((p) => {
+            if (p.id !== targetProjectId) return p;
+            const merged = [...p.pages, ...newPageMetas];
+            return {
+              ...p,
+              pages: merged,
+              totalPages: merged.length,
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        }));
+
+        debouncedSyncMetadata(targetProjectId, {});
       },
 
       addIssue: (projectId, issue) => {

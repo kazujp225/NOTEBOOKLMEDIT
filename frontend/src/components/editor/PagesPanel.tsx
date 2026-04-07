@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Check, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -35,6 +35,7 @@ interface PagesPanelProps {
   currentPageNumber: number;
   onPageSelect: (pageNumber: number) => void;
   onPageDelete?: (pageNumber: number) => void;
+  onPageMove?: (fromPageNumber: number, toPageNumber: number) => void;
 }
 
 export function PagesPanel({
@@ -43,6 +44,7 @@ export function PagesPanel({
   currentPageNumber,
   onPageSelect,
   onPageDelete,
+  onPageMove,
 }: PagesPanelProps) {
   // Group issues by page
   const issuesByPage = useMemo(() => {
@@ -54,6 +56,11 @@ export function PagesPanel({
     });
     return map;
   }, [issues]);
+
+  // Drag-and-drop reordering state
+  const [draggedPageNumber, setDraggedPageNumber] = useState<number | null>(null);
+  const [dragOverPageNumber, setDragOverPageNumber] = useState<number | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<'before' | 'after'>('before');
 
   return (
     <aside className="w-[140px] bg-gray-50 border-r border-gray-200 flex flex-col flex-shrink-0">
@@ -67,6 +74,10 @@ export function PagesPanel({
           ).length;
 
           const canDelete = !!onPageDelete && pages.length > 1;
+          const canDrag = !!onPageMove && pages.length > 1;
+          const isDragging = draggedPageNumber === page.page_number;
+          const isDragOver = dragOverPageNumber === page.page_number && draggedPageNumber !== page.page_number;
+
           return (
             <div
               key={page.page_number}
@@ -77,17 +88,78 @@ export function PagesPanel({
                   onPageSelect(page.page_number);
                 }
               }}
+              draggable={canDrag}
+              onDragStart={(e) => {
+                if (!canDrag) return;
+                setDraggedPageNumber(page.page_number);
+                e.dataTransfer.effectAllowed = 'move';
+                // Setting some data is required for Firefox to fire dragend.
+                try { e.dataTransfer.setData('text/plain', String(page.page_number)); } catch { /* noop */ }
+              }}
+              onDragEnter={(e) => {
+                if (!canDrag || draggedPageNumber === null || draggedPageNumber === page.page_number) return;
+                e.preventDefault();
+                setDragOverPageNumber(page.page_number);
+              }}
+              onDragOver={(e) => {
+                if (!canDrag || draggedPageNumber === null) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                const midpoint = rect.top + rect.height / 2;
+                setDragOverPosition(e.clientY < midpoint ? 'before' : 'after');
+                setDragOverPageNumber(page.page_number);
+              }}
+              onDragLeave={(e) => {
+                // Only clear if we're leaving the element itself (not a child)
+                const related = e.relatedTarget as Node | null;
+                if (related && (e.currentTarget as HTMLElement).contains(related)) return;
+                setDragOverPageNumber((cur) => (cur === page.page_number ? null : cur));
+              }}
+              onDrop={(e) => {
+                if (!canDrag || draggedPageNumber === null || draggedPageNumber === page.page_number) {
+                  setDraggedPageNumber(null);
+                  setDragOverPageNumber(null);
+                  return;
+                }
+                e.preventDefault();
+                const from = draggedPageNumber;
+                let target = page.page_number;
+                if (dragOverPosition === 'after') target += 1;
+                // When dragging downward, removal of the source shifts the target index by -1.
+                if (from < target) target -= 1;
+                const finalTarget = Math.max(1, Math.min(pages.length, target));
+                if (finalTarget !== from) {
+                  onPageMove?.(from, finalTarget);
+                }
+                setDraggedPageNumber(null);
+                setDragOverPageNumber(null);
+              }}
+              onDragEnd={() => {
+                setDraggedPageNumber(null);
+                setDragOverPageNumber(null);
+              }}
               className={cn(
                 'group relative w-full rounded-md overflow-hidden transition-all cursor-pointer',
                 isActive
                   ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-50'
-                  : 'hover:ring-1 hover:ring-gray-300 hover:ring-offset-2 hover:ring-offset-gray-50 opacity-60 hover:opacity-100'
+                  : 'hover:ring-1 hover:ring-gray-300 hover:ring-offset-2 hover:ring-offset-gray-50 opacity-60 hover:opacity-100',
+                isDragging && 'opacity-30'
               )}
               role="button"
               tabIndex={0}
               aria-label={`ページ ${page.page_number}`}
               aria-current={isActive ? 'page' : undefined}
             >
+              {/* Drop indicator */}
+              {isDragOver && (
+                <div
+                  className={cn(
+                    'absolute left-0 right-0 h-0.5 bg-blue-500 z-20 pointer-events-none',
+                    dragOverPosition === 'before' ? '-top-1' : '-bottom-1'
+                  )}
+                />
+              )}
               {/* Thumbnail image */}
               <div className="relative bg-white">
                 <img

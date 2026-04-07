@@ -10,6 +10,7 @@ import { CanvasViewer } from './CanvasViewer';
 import { FixQueuePanel, type AIInpaintOptions, type TextStyle } from './FixQueuePanel';
 import { ExportPanel } from '@/components/panels/ExportPanel';
 import { ImageLibraryPanel } from '@/components/panels/ImageLibraryPanel';
+import { ImportPagesPanel } from '@/components/panels/ImportPagesPanel';
 import { useToast } from '@/components/ui/Toast';
 import { useAppStore, generateId, type Issue, type BBox, type PageData, type ProjectWithImages, type TextOverlay } from '@/lib/store';
 import { saveImage, getImage } from '@/lib/image-store';
@@ -32,6 +33,8 @@ export function Editor({ projectId }: EditorProps) {
   const loadProjectWithImages = useAppStore((state) => state.loadProjectWithImages);
   const updateProject = useAppStore((state) => state.updateProject);
   const deletePage = useAppStore((state) => state.deletePage);
+  const movePage = useAppStore((state) => state.movePage);
+  const importPagesFromProject = useAppStore((state) => state.importPagesFromProject);
   const addIssue = useAppStore((state) => state.addIssue);
   const updateIssue = useAppStore((state) => state.updateIssue);
   const deleteIssue = useAppStore((state) => state.deleteIssue);
@@ -51,6 +54,7 @@ export function Editor({ projectId }: EditorProps) {
   const [autoFixEnabled, setAutoFixEnabled] = useState(true);
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [showLibraryPanel, setShowLibraryPanel] = useState(false);
+  const [showImportPanel, setShowImportPanel] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [undoStack, setUndoStack] = useState<{ issueId: string; pageNumber: number; previousImageDataUrl: string }[]>([]);
   const [redoStack, setRedoStack] = useState<{ issueId: string; pageNumber: number; previousImageDataUrl: string }[]>([]);
@@ -628,6 +632,57 @@ export function Editor({ projectId }: EditorProps) {
     }
   }, [project, projectId, currentPageNumber, selectedIssue, deletePage, loadProjectWithImages, addToast]);
 
+  // Reorder pages by drag-and-drop in the page sidebar.
+  const handleMovePage = useCallback(async (fromPageNumber: number, toPageNumber: number) => {
+    if (!project) return;
+    if (fromPageNumber === toPageNumber) return;
+
+    try {
+      await movePage(projectId, fromPageNumber, toPageNumber);
+      const reloaded = await loadProjectWithImages(projectId);
+      if (reloaded) {
+        setProject(reloaded);
+
+        // Adjust currentPageNumber to follow the moved page if it was active
+        if (currentPageNumber === fromPageNumber) {
+          setCurrentPageNumber(toPageNumber);
+        } else {
+          // Otherwise: adjust if our current page got shifted by the reorder
+          const lo = Math.min(fromPageNumber, toPageNumber);
+          const hi = Math.max(fromPageNumber, toPageNumber);
+          if (currentPageNumber >= lo && currentPageNumber <= hi) {
+            const delta = fromPageNumber < toPageNumber ? -1 : 1;
+            setCurrentPageNumber(currentPageNumber + delta);
+          }
+        }
+
+        // Image keys were renamed → undo/redo references would point at stale keys
+        setUndoStack([]);
+        setRedoStack([]);
+      }
+    } catch (err) {
+      console.error('Move page error:', err);
+      addToast('error', err instanceof Error ? err.message : 'ページの並び替えに失敗しました');
+    }
+  }, [project, projectId, currentPageNumber, movePage, loadProjectWithImages, addToast]);
+
+  // Import pages from another project, appending them to the current project.
+  const handleImportPages = useCallback(async (sourceProjectId: string, sourcePageNumbers: number[]) => {
+    if (!project || sourcePageNumbers.length === 0) return;
+
+    try {
+      await importPagesFromProject(projectId, sourceProjectId, sourcePageNumbers);
+      const reloaded = await loadProjectWithImages(projectId);
+      if (reloaded) {
+        setProject(reloaded);
+      }
+      addToast('success', `${sourcePageNumbers.length} ページを取り込みました`);
+    } catch (err) {
+      console.error('Import pages error:', err);
+      addToast('error', err instanceof Error ? err.message : 'ページの取り込みに失敗しました');
+    }
+  }, [project, projectId, importPagesFromProject, loadProjectWithImages, addToast]);
+
   // Erase a region from the current page (paint it with a solid color).
   // No issue is created — this is a direct destructive edit, but reversible via undo.
   const handleEraseRegion = useCallback(async (bbox: BBox, fillColor: string = '#ffffff') => {
@@ -1015,6 +1070,7 @@ export function Editor({ projectId }: EditorProps) {
         onSave={handleSave}
         onOpenLibrary={() => setShowLibraryPanel(true)}
         libraryCount={extractedImageCount}
+        onOpenImport={() => setShowImportPanel(true)}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -1047,6 +1103,7 @@ export function Editor({ projectId }: EditorProps) {
           currentPageNumber={currentPageNumber}
           onPageSelect={isApplying ? () => {} : handlePageSelect}
           onPageDelete={isApplying ? undefined : handleDeletePage}
+          onPageMove={isApplying ? undefined : handleMovePage}
         />
 
         {currentPage ? (
@@ -1162,6 +1219,13 @@ export function Editor({ projectId }: EditorProps) {
         onClose={() => setShowLibraryPanel(false)}
         pages={pages}
         projectName={project.name}
+      />
+
+      <ImportPagesPanel
+        isOpen={showImportPanel}
+        onClose={() => setShowImportPanel(false)}
+        currentProjectId={projectId}
+        onImport={handleImportPages}
       />
     </div>
   );
