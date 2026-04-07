@@ -698,14 +698,27 @@ export function Editor({ projectId }: EditorProps) {
   // Erase a region from the current page (paint it with a solid color).
   // No issue is created — this is a direct destructive edit, but reversible via undo.
   const handleEraseRegion = useCallback(async (bbox: BBox, fillColor: string = '#ffffff') => {
-    if (!project || !currentPage) return;
+    console.log('[erase] handleEraseRegion called', {
+      bbox,
+      fillColor,
+      hasProject: !!project,
+      hasCurrentPage: !!currentPage,
+      currentPageNumber,
+    });
+    if (!project || !currentPage) {
+      console.warn('[erase] aborted: project or currentPage missing');
+      addToast('warning', '消去できません: ページが読み込まれていません');
+      return;
+    }
 
     setIsApplying(true);
     try {
       const previousImageDataUrl = currentPage.imageDataUrl;
+      console.log('[erase] calling eraseRegion util, bbox=', bbox, 'pageImageLength=', previousImageDataUrl.length);
 
       const { eraseRegion } = await import('@/lib/pdf-utils');
       const newImageDataUrl = await eraseRegion(previousImageDataUrl, bbox, fillColor);
+      console.log('[erase] eraseRegion returned new dataUrl, length=', newImageDataUrl.length);
 
       // Save new image to IndexedDB
       const imageKey = `${projectId}/page-${currentPageNumber}`;

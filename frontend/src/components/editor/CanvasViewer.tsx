@@ -335,6 +335,12 @@ export function CanvasViewer({
         }
       } else if (mode === 'erase') {
         // Erase region directly (paint over with white)
+        console.log('[erase] mouseUp in erase mode', {
+          width: Math.round(width),
+          height: Math.round(height),
+          hasHandler: !!onEraseRegion,
+          willCall: width > 5 && height > 5 && !!onEraseRegion,
+        });
         if (width > 5 && height > 5 && onEraseRegion) {
           onEraseRegion({
             x: Math.round(x),
@@ -671,7 +677,12 @@ export function CanvasViewer({
 
         <Tooltip content="消去モード (ドラッグした領域を白で塗りつぶす)">
           <button
-            onClick={() => { setMode('erase'); onOverlaySelect?.(null); setEditingOverlayId(null); }}
+            onClick={() => {
+              console.log('[erase] mode button clicked, switching to erase');
+              setMode('erase');
+              onOverlaySelect?.(null);
+              setEditingOverlayId(null);
+            }}
             className={cn(
               'flex items-center justify-center rounded-full transition-colors',
               mode === 'erase'
