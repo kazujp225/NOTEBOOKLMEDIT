@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Check } from 'lucide-react';
+import { Check, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface PageForPanel {
@@ -34,6 +34,7 @@ interface PagesPanelProps {
   projectId: string;
   currentPageNumber: number;
   onPageSelect: (pageNumber: number) => void;
+  onPageDelete?: (pageNumber: number) => void;
 }
 
 export function PagesPanel({
@@ -41,6 +42,7 @@ export function PagesPanel({
   issues,
   currentPageNumber,
   onPageSelect,
+  onPageDelete,
 }: PagesPanelProps) {
   // Group issues by page
   const issuesByPage = useMemo(() => {
@@ -64,16 +66,25 @@ export function PagesPanel({
             (i) => i.status !== 'corrected' && i.status !== 'skipped'
           ).length;
 
+          const canDelete = !!onPageDelete && pages.length > 1;
           return (
-            <button
+            <div
               key={page.page_number}
               onClick={() => onPageSelect(page.page_number)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onPageSelect(page.page_number);
+                }
+              }}
               className={cn(
-                'w-full rounded-md overflow-hidden transition-all',
+                'group relative w-full rounded-md overflow-hidden transition-all cursor-pointer',
                 isActive
                   ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-50'
                   : 'hover:ring-1 hover:ring-gray-300 hover:ring-offset-2 hover:ring-offset-gray-50 opacity-60 hover:opacity-100'
               )}
+              role="button"
+              tabIndex={0}
               aria-label={`ページ ${page.page_number}`}
               aria-current={isActive ? 'page' : undefined}
             >
@@ -85,6 +96,22 @@ export function PagesPanel({
                   className="w-full"
                   loading="lazy"
                 />
+
+                {/* Delete page button (top-left, hover) */}
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPageDelete?.(page.page_number);
+                    }}
+                    className="absolute top-1 left-1 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="このページを削除"
+                    aria-label={`ページ ${page.page_number} を削除`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                )}
 
                 {/* Issue count badge */}
                 {unresolvedCount > 0 ? (
@@ -107,7 +134,7 @@ export function PagesPanel({
                   {page.page_number}
                 </span>
               </div>
-            </button>
+            </div>
           );
         })}
       </div>

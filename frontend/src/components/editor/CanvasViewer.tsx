@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X, Trash2, Copy, Shapes, Check, AlertCircle, AlertTriangle, Loader2, Type } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, MousePointer, Square, Plus, X, Trash2, Copy, Shapes, Check, AlertCircle, AlertTriangle, Loader2, Type, Eraser } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { TextOverlayBox, type ResizeHandle } from './TextOverlayBox';
@@ -38,6 +38,7 @@ interface CanvasViewerProps {
   onIssueClick: (issue: IssueForCanvas) => void;
   onCreateIssue?: (bbox: BBox, editMode: 'text' | 'object') => void;
   onDeleteIssue?: (issueId: string) => void;
+  onEraseRegion?: (bbox: BBox, fillColor?: string) => void;
   zoom: number;
   onZoomChange: (zoom: number) => void;
   disabled?: boolean;
@@ -59,6 +60,7 @@ export function CanvasViewer({
   onIssueClick,
   onCreateIssue,
   onDeleteIssue,
+  onEraseRegion,
   zoom,
   onZoomChange,
   disabled = false,
@@ -77,7 +79,7 @@ export function CanvasViewer({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   // ROI selection mode
-  const [mode, setMode] = useState<'select' | 'draw' | 'text'>('draw');
+  const [mode, setMode] = useState<'select' | 'draw' | 'text' | 'erase'>('draw');
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
   const [drawEnd, setDrawEnd] = useState({ x: 0, y: 0 });
@@ -242,6 +244,12 @@ export function CanvasViewer({
       setDrawStart(pos);
       setDrawEnd(pos);
       setShowHint(false);
+    } else if (mode === 'erase' && e.button === 0) {
+      e.preventDefault();
+      const pos = screenToImage(e.clientX, e.clientY);
+      setIsDrawing(true);
+      setDrawStart(pos);
+      setDrawEnd(pos);
     } else if (e.button === 1 || (e.button === 0 && e.altKey)) {
       e.preventDefault();
       setIsDragging(true);
@@ -325,6 +333,16 @@ export function CanvasViewer({
             height: Math.round(height),
           });
         }
+      } else if (mode === 'erase') {
+        // Erase region directly (paint over with white)
+        if (width > 5 && height > 5 && onEraseRegion) {
+          onEraseRegion({
+            x: Math.round(x),
+            y: Math.round(y),
+            width: Math.round(width),
+            height: Math.round(height),
+          });
+        }
       } else {
         // Create issue (draw mode)
         if (width > 10 && height > 10 && onCreateIssue) {
@@ -376,7 +394,7 @@ export function CanvasViewer({
         className={cn(
           'relative flex-1 overflow-hidden',
           isDragging && 'cursor-grabbing',
-          (mode === 'draw' || mode === 'text') && !isDragging && 'cursor-crosshair'
+          (mode === 'draw' || mode === 'text' || mode === 'erase') && !isDragging && 'cursor-crosshair'
         )}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
@@ -554,7 +572,9 @@ export function CanvasViewer({
               <div
                 className={cn(
                   'absolute border-2 pointer-events-none',
-                  mode === 'text' ? 'border-green-500 bg-green-500/20' : 'border-blue-500 bg-blue-500/20'
+                  mode === 'text' ? 'border-green-500 bg-green-500/20' :
+                  mode === 'erase' ? 'border-red-500 bg-red-500/30' :
+                  'border-blue-500 bg-blue-500/20'
                 )}
                 style={{
                   left: drawingRect.x * effectiveZoom,
@@ -646,6 +666,22 @@ export function CanvasViewer({
           >
             <Type className="w-4 h-4" />
             {mode === 'text' && <span className="text-xs font-medium">テキスト</span>}
+          </button>
+        </Tooltip>
+
+        <Tooltip content="消去モード (ドラッグした領域を白で塗りつぶす)">
+          <button
+            onClick={() => { setMode('erase'); onOverlaySelect?.(null); setEditingOverlayId(null); }}
+            className={cn(
+              'flex items-center justify-center rounded-full transition-colors',
+              mode === 'erase'
+                ? 'bg-red-500 text-white px-3 h-8 gap-1.5'
+                : 'hover:bg-gray-100 text-gray-400 w-8 h-8'
+            )}
+            aria-label="消去"
+          >
+            <Eraser className="w-4 h-4" />
+            {mode === 'erase' && <span className="text-xs font-medium">消去</span>}
           </button>
         </Tooltip>
 
@@ -741,6 +777,14 @@ export function CanvasViewer({
         <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 text-white text-sm font-medium rounded-full shadow-lg flex items-center gap-2 bg-green-600">
           <Type className="w-4 h-4" />
           ドラッグしてテキストボックスを配置
+        </div>
+      )}
+
+      {/* Top mode indicator for erase mode */}
+      {mode === 'erase' && !disabled && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 text-white text-sm font-medium rounded-full shadow-lg flex items-center gap-2 bg-red-600">
+          <Eraser className="w-4 h-4" />
+          ドラッグして消したい写真・領域を囲む
         </div>
       )}
     </div>

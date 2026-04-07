@@ -321,6 +321,36 @@ export function applyTextOverlay(
 }
 
 /**
+ * Erase a region of a page image by filling it with a solid color.
+ * Used to delete unwanted images/photos from a page without AI.
+ * Returns a new dataURL with the region painted over.
+ */
+export function eraseRegion(
+  imageDataUrl: string,
+  bbox: { x: number; y: number; width: number; height: number },
+  fillColor: string = '#ffffff'
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      ctx.fillStyle = fillColor;
+      ctx.fillRect(bbox.x, bbox.y, bbox.width, bbox.height);
+
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = reject;
+    img.src = imageDataUrl;
+  });
+}
+
+/**
  * Render text overlays onto a page image for PDF export.
  */
 export function renderOverlaysOntoImage(

@@ -4,7 +4,7 @@
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { saveImage, getImage, deleteProjectImages } from './image-store';
+import { saveImage, getImage, deleteImage, deleteProjectImages } from './image-store';
 import {
   syncProjectToCloud,
   fetchCloudProjects,
@@ -114,6 +114,9 @@ interface AppState {
   setCurrentProject: (id: string | null) => void;
   getProject: (id: string) => Project | null;
   loadProjectWithImages: (id: string) => Promise<ProjectWithImages | null>;
+
+  // Page actions
+  deletePage: (projectId: string, pageNumber: number) => Promise<void>;
 
   // Issue actions
   addIssue: (projectId: string, issue: Issue) => void;
@@ -277,6 +280,84 @@ export const useAppStore = create<AppState>()(
           textOverlays: project.textOverlays || [],
           pages: pagesWithImages.filter((p): p is PageData => p !== null),
         };
+      },
+
+      deletePage: async (projectId, pageNumber) => {
+        const project = get().getProject(projectId);
+        if (!project) return;
+        if (project.pages.length <= 1) {
+          console.warn('[deletePage] cannot delete the last remaining page');
+          return;
+        }
+
+        // 1. Delete the target page's images from IndexedDB
+        await deleteImage(`${projectId}/page-${pageNumber}`);
+        await deleteImage(`${projectId}/thumb-${pageNumber}`);
+
+        // 2. Renumber subsequent pages: rename their IndexedDB keys (page N → page N-1)
+        const subsequent = project.pages
+          .filter((p) => p.pageNumber > pageNumber)
+          .sort((a, b) => a.pageNumber - b.pageNumber);
+
+        for (const p of subsequent) {
+          const oldImageKey = `${projectId}/page-${p.pageNumber}`;
+          const newImageKey = `${projectId}/page-${p.pageNumber - 1}`;
+          const oldThumbKey = `${projectId}/thumb-${p.pageNumber}`;
+          const newThumbKey = `${projectId}/thumb-${p.pageNumber - 1}`;
+
+          const imageData = await getImage(oldImageKey);
+          if (imageData) {
+            await saveImage(newImageKey, imageData);
+            await deleteImage(oldImageKey);
+          }
+          const thumbData = await getImage(oldThumbKey);
+          if (thumbData) {
+            await saveImage(newThumbKey, thumbData);
+            await deleteImage(oldThumbKey);
+          }
+        }
+
+        // 3. Update the project state — remove deleted page, renumber rest, drop/renumber issues & overlays
+        set((state) => ({
+          projects: state.projects.map((p) => {
+            if (p.id !== projectId) return p;
+
+            const newPages: PageMeta[] = p.pages
+              .filter((pg) => pg.pageNumber !== pageNumber)
+              .map((pg) => {
+                if (pg.pageNumber > pageNumber) {
+                  const newNum = pg.pageNumber - 1;
+                  return {
+                    ...pg,
+                    pageNumber: newNum,
+                    imageKey: `${projectId}/page-${newNum}`,
+                    thumbnailKey: `${projectId}/thumb-${newNum}`,
+                  };
+                }
+                return pg;
+              });
+
+            const newIssues: Issue[] = p.issues
+              .filter((i) => i.pageNumber !== pageNumber)
+              .map((i) => (i.pageNumber > pageNumber ? { ...i, pageNumber: i.pageNumber - 1 } : i));
+
+            const newOverlays: TextOverlay[] = (p.textOverlays || [])
+              .filter((o) => o.pageNumber !== pageNumber)
+              .map((o) => (o.pageNumber > pageNumber ? { ...o, pageNumber: o.pageNumber - 1 } : o));
+
+            return {
+              ...p,
+              pages: newPages,
+              issues: newIssues,
+              textOverlays: newOverlays,
+              totalPages: newPages.length,
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        }));
+
+        // Background metadata sync (best-effort; cloud-side issues/overlays cleanup is not fully handled)
+        debouncedSyncMetadata(projectId, {});
       },
 
       addIssue: (projectId, issue) => {

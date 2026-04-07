@@ -30,6 +30,7 @@ export function Editor({ projectId }: EditorProps) {
   );
   const loadProjectWithImages = useAppStore((state) => state.loadProjectWithImages);
   const updateProject = useAppStore((state) => state.updateProject);
+  const deletePage = useAppStore((state) => state.deletePage);
   const addIssue = useAppStore((state) => state.addIssue);
   const updateIssue = useAppStore((state) => state.updateIssue);
   const deleteIssue = useAppStore((state) => state.deleteIssue);
@@ -572,6 +573,108 @@ export function Editor({ projectId }: EditorProps) {
     }
   }, [projectId, currentPageNumber, currentPage, issues.length, addIssue, updateIssue, addToast]);
 
+  // Delete an entire page (slide) from the project.
+  const handleDeletePage = useCallback(async (pageNumber: number) => {
+    if (!project) return;
+    if (project.pages.length <= 1) {
+      addToast('warning', '最後の1ページは削除できません');
+      return;
+    }
+
+    const ok = window.confirm(`ページ ${pageNumber} を削除しますか？\nこのページのIssue・テキスト・画像もすべて消えます。元に戻せません。`);
+    if (!ok) return;
+
+    try {
+      await deletePage(projectId, pageNumber);
+
+      // Reload project from store to pick up renumbered pages/issues/overlays
+      const reloaded = await loadProjectWithImages(projectId);
+      if (reloaded) {
+        setProject(reloaded);
+
+        // Switch current page if the deleted one was active or out of range
+        const newTotal = reloaded.pages.length;
+        let nextPage = currentPageNumber;
+        if (currentPageNumber === pageNumber) {
+          nextPage = Math.min(pageNumber, newTotal); // stay at same index, or last page
+          nextPage = Math.max(1, nextPage);
+        } else if (currentPageNumber > pageNumber) {
+          nextPage = currentPageNumber - 1;
+        }
+        setCurrentPageNumber(nextPage);
+
+        // Clear selected issue if it pointed at the deleted page or no longer exists
+        if (selectedIssue && (selectedIssue.pageNumber === pageNumber || !reloaded.issues.find((i) => i.id === selectedIssue.id))) {
+          setSelectedIssue(null);
+          setCurrentIssueIndex(0);
+        }
+
+        // Drop undo/redo stacks: image keys may have been renamed and stale references would corrupt state
+        setUndoStack([]);
+        setRedoStack([]);
+      }
+
+      addToast('success', `ページ ${pageNumber} を削除しました`);
+    } catch (err) {
+      console.error('Delete page error:', err);
+      addToast('error', err instanceof Error ? err.message : 'ページの削除に失敗しました');
+    }
+  }, [project, projectId, currentPageNumber, selectedIssue, deletePage, loadProjectWithImages, addToast]);
+
+  // Erase a region from the current page (paint it with a solid color).
+  // No issue is created — this is a direct destructive edit, but reversible via undo.
+  const handleEraseRegion = useCallback(async (bbox: BBox, fillColor: string = '#ffffff') => {
+    if (!project || !currentPage) return;
+
+    setIsApplying(true);
+    try {
+      const previousImageDataUrl = currentPage.imageDataUrl;
+
+      const { eraseRegion } = await import('@/lib/pdf-utils');
+      const newImageDataUrl = await eraseRegion(previousImageDataUrl, bbox, fillColor);
+
+      // Save new image to IndexedDB
+      const imageKey = `${projectId}/page-${currentPageNumber}`;
+      await saveImage(imageKey, newImageDataUrl);
+
+      // Sync edited image to cloud (background)
+      getCurrentUserId().then((uid) => {
+        if (!uid) return;
+        syncPageImage(uid, projectId, currentPageNumber, newImageDataUrl).catch((err) =>
+          console.warn('[sync] page image sync failed:', err)
+        );
+      });
+
+      // Update local state
+      setProject((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          pages: prev.pages.map((p) =>
+            p.pageNumber === currentPageNumber
+              ? { ...p, imageDataUrl: newImageDataUrl }
+              : p
+          ),
+        };
+      });
+
+      // Add to undo stack with a synthetic id (no real issue exists for erase actions)
+      setUndoStack((prev) => [...prev, {
+        issueId: `erase-${generateId()}`,
+        pageNumber: currentPageNumber,
+        previousImageDataUrl,
+      }].slice(-20));
+      setRedoStack([]);
+
+      addToast('success', '領域を消去しました');
+    } catch (err) {
+      console.error('Erase region error:', err);
+      addToast('error', err instanceof Error ? err.message : '領域の消去に失敗しました');
+    } finally {
+      setIsApplying(false);
+    }
+  }, [project, currentPage, currentPageNumber, projectId, addToast]);
+
   // Delete issue from canvas
   const handleDeleteIssue = useCallback((issueId: string) => {
     deleteIssue(projectId, issueId);
@@ -934,6 +1037,7 @@ export function Editor({ projectId }: EditorProps) {
           projectId={projectId}
           currentPageNumber={currentPageNumber}
           onPageSelect={isApplying ? () => {} : handlePageSelect}
+          onPageDelete={isApplying ? undefined : handleDeletePage}
         />
 
         {currentPage ? (
@@ -962,6 +1066,7 @@ export function Editor({ projectId }: EditorProps) {
             }}
             onCreateIssue={isApplying ? undefined : handleCreateIssue}
             onDeleteIssue={isApplying ? undefined : handleDeleteIssue}
+            onEraseRegion={isApplying ? undefined : handleEraseRegion}
             zoom={zoom}
             onZoomChange={setZoom}
             disabled={isApplying}
