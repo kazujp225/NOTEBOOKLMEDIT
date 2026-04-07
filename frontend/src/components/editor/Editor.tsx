@@ -9,6 +9,7 @@ import { PagesPanel } from './PagesPanel';
 import { CanvasViewer } from './CanvasViewer';
 import { FixQueuePanel, type AIInpaintOptions, type TextStyle } from './FixQueuePanel';
 import { ExportPanel } from '@/components/panels/ExportPanel';
+import { ImageLibraryPanel } from '@/components/panels/ImageLibraryPanel';
 import { useToast } from '@/components/ui/Toast';
 import { useAppStore, generateId, type Issue, type BBox, type PageData, type ProjectWithImages, type TextOverlay } from '@/lib/store';
 import { saveImage, getImage } from '@/lib/image-store';
@@ -49,6 +50,7 @@ export function Editor({ projectId }: EditorProps) {
   const [zoom, setZoom] = useState(1);
   const [autoFixEnabled, setAutoFixEnabled] = useState(true);
   const [showExportPanel, setShowExportPanel] = useState(false);
+  const [showLibraryPanel, setShowLibraryPanel] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [undoStack, setUndoStack] = useState<{ issueId: string; pageNumber: number; previousImageDataUrl: string }[]>([]);
   const [redoStack, setRedoStack] = useState<{ issueId: string; pageNumber: number; previousImageDataUrl: string }[]>([]);
@@ -132,6 +134,11 @@ export function Editor({ projectId }: EditorProps) {
   const pageOverlays = useMemo(
     () => (project?.textOverlays || []).filter((o) => o.pageNumber === currentPageNumber),
     [project?.textOverlays, currentPageNumber]
+  );
+
+  const extractedImageCount = useMemo(
+    () => pages.reduce((sum, p) => sum + (p.extractedImages?.length || 0), 0),
+    [pages]
   );
 
   // Generate region preview when issue selection changes
@@ -1006,6 +1013,8 @@ export function Editor({ projectId }: EditorProps) {
         onRedo={handleRedo}
         canRedo={redoStack.length > 0}
         onSave={handleSave}
+        onOpenLibrary={() => setShowLibraryPanel(true)}
+        libraryCount={extractedImageCount}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -1146,6 +1155,13 @@ export function Editor({ projectId }: EditorProps) {
         projectId={projectId}
         isOpen={showExportPanel}
         onClose={() => setShowExportPanel(false)}
+      />
+
+      <ImageLibraryPanel
+        isOpen={showLibraryPanel}
+        onClose={() => setShowLibraryPanel(false)}
+        pages={pages}
+        projectName={project.name}
       />
     </div>
   );

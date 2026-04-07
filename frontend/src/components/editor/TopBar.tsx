@@ -8,6 +8,7 @@ import {
   Redo2,
   Save,
   Download,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -22,6 +23,8 @@ interface TopBarProps {
   onRedo: () => void;
   canRedo: boolean;
   onSave: () => void;
+  onOpenLibrary?: () => void;
+  libraryCount?: number;
   isExporting?: boolean;
 }
 
@@ -34,6 +37,8 @@ export function TopBar({
   onRedo,
   canRedo,
   onSave,
+  onOpenLibrary,
+  libraryCount,
   isExporting,
 }: TopBarProps) {
   return (
@@ -87,6 +92,22 @@ export function TopBar({
         >
           <Save className="w-4 h-4 text-gray-400" />
         </button>
+
+        {onOpenLibrary && (
+          <button
+            onClick={onOpenLibrary}
+            className="relative p-1.5 hover:bg-gray-100 rounded-md transition-colors"
+            aria-label="画像ライブラリ"
+            title="画像ライブラリ (PDF内の画像)"
+          >
+            <ImageIcon className="w-4 h-4 text-gray-400" />
+            {libraryCount !== undefined && libraryCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-0.5 bg-blue-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none">
+                {libraryCount > 99 ? '99+' : libraryCount}
+              </span>
+            )}
+          </button>
+        )}
 
         <button
           onClick={onExportPdf}
