@@ -177,6 +177,10 @@ export function Uploader({ onUploadComplete }: UploaderProps) {
           firstFileName = task.files[0].name;
         }
 
+        if (!pages || pages.length === 0) {
+          throw new Error('ページが取得できませんでした');
+        }
+
         const projectId = generateId();
         const now = new Date().toISOString();
 

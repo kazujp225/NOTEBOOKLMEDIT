@@ -24,9 +24,10 @@ export function ImportPagesPanel({ isOpen, onClose, currentProjectId, onImport }
   const projects = useAppStore((state) => state.projects);
   const loadProjectWithImages = useAppStore((state) => state.loadProjectWithImages);
 
-  // Other projects (excluding the current one)
+  // Other projects: exclude the current one AND any project with zero pages
+  // (those are stale/empty and would just confuse the user as a source).
   const otherProjects = useMemo<Project[]>(
-    () => projects.filter((p) => p.id !== currentProjectId),
+    () => projects.filter((p) => p.id !== currentProjectId && p.pages.length > 0),
     [projects, currentProjectId]
   );
 

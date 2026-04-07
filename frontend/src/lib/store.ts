@@ -171,6 +171,13 @@ export const useAppStore = create<AppState>()(
       addProject: async (projectWithImages) => {
         const { pages, ...projectMeta } = projectWithImages;
 
+        // Refuse to create a project with no pages — that's always a bug
+        // (e.g. PDF.js failed silently, unsupported file, etc.) and the resulting
+        // empty project pollutes the project list and the import modal.
+        if (!pages || pages.length === 0) {
+          throw new Error('ページが0件のプロジェクトは作成できません（PDFの解析に失敗した可能性があります）');
+        }
+
         // Get current user ID immediately
         const currentUserId = await getCurrentUserId();
 
